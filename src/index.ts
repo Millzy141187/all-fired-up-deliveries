@@ -848,8 +848,12 @@ app.get("/confirmation", (c) => serveAsset(c, "/confirmation.html"));
 app.get("/demo-pay", (c) => serveAsset(c, "/demo-pay.html"));
 app.get("/admin/google", (c) => c.redirect("/admin#setup"));
 
-app.notFound((c) => {
+app.notFound(async (c) => {
   if (c.req.path.startsWith("/api/")) return c.json({ error: "Not found." }, 404);
+  // Serve real static files (app.js, styles.css, images, admin.html…) first,
+  // then fall back to the shop page for client-side routes.
+  const asset = await serveAsset(c, c.req.path);
+  if (asset.status !== 404) return asset;
   return serveAsset(c, "/index.html");
 });
 

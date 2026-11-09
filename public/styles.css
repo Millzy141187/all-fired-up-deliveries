@@ -272,7 +272,7 @@ p { margin: 0; }
 .calendar-banner.off .dot { background: #b08a4a; }
 
 .day-list { display: flex; flex-direction: column; gap: 12px; max-height: 560px; overflow: auto; padding-right: 4px; }
-.day-card { border: 1px solid var(--line); border-radius: 12px; background: #fffdf9; overflow: hidden; }
+.day-card { border: 1px solid var(--line); border-radius: 12px; background: #fffdf9; overflow: hidden; flex: 0 0 auto; }
 .day-card.closed { background: #faf4ea; }
 .day-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; background: var(--cream); border-bottom: 1px solid var(--line); }
 .day-head strong { font-family: var(--serif); font-size: 1rem; color: var(--charcoal); }
