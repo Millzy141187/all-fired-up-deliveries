@@ -71,12 +71,63 @@ app.use("*", async (c, next) => {
   await next();
 });
 
+const VERCEL_ORIGIN = "https://all-fired-up-deliveries.vercel.app";
+const LOCAL_ORIGINS = new Set(["http://localhost:3000", "http://127.0.0.1:3000"]);
+
+function requestOrigin(c: any): string {
+  return new URL(c.req.url).origin;
+}
+
+function normaliseOrigin(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function allowedOrigin(c: any, value: string | null | undefined): string | null {
+  const origin = normaliseOrigin(value);
+  if (!origin) return null;
+  return origin === VERCEL_ORIGIN || origin === requestOrigin(c) || LOCAL_ORIGINS.has(origin)
+    ? origin
+    : null;
+}
+
+/**
+ * The customer site can be served from Vercel while the API stays on
+ * Cloudflare. Only trust origins we explicitly recognise; never build a
+ * redirect URL from an arbitrary caller-supplied value.
+ */
+function publicOrigin(c: any): string {
+  if (c.env.APP_URL) return String(c.env.APP_URL).replace(/\/$/, "");
+  const forwardedHost = c.req.header("x-forwarded-host");
+  const candidates = [
+    c.req.query("origin"),
+    c.req.query("publicOrigin"),
+    c.req.header("origin"),
+    c.req.header("referer"),
+    forwardedHost
+      ? (forwardedHost.includes("://") ? forwardedHost : `https://${forwardedHost}`)
+      : null,
+  ];
+  for (const candidate of candidates) {
+    const origin = allowedOrigin(c, candidate);
+    if (origin) return origin;
+  }
+  return requestOrigin(c);
+}
+
 app.use("/api/admin/*", async (c, next) => {
   if (["POST", "PATCH", "DELETE", "PUT"].includes(c.req.method)) {
     const origin = c.req.header("origin");
     if (origin) {
       try {
-        if (new URL(origin).host !== new URL(c.req.url).host) {
+        const parsed = new URL(origin).origin;
+        if (parsed !== requestOrigin(c) && parsed !== VERCEL_ORIGIN && !LOCAL_ORIGINS.has(parsed)) {
           return c.json({ error: "Cross-origin request blocked." }, 403);
         }
       } catch {
@@ -86,10 +137,6 @@ app.use("/api/admin/*", async (c, next) => {
   }
   await next();
 });
-
-function originOf(c: { env: Env; req: { url: string } }): string {
-  return c.env.APP_URL?.replace(/\/$/, "") || new URL(c.req.url).origin;
-}
 
 async function serveAsset(c: any, path: string): Promise<Response> {
   const url = new URL(c.req.url);
@@ -219,7 +266,8 @@ app.post("/api/reservations/release", async (c) => {
 app.post("/api/checkout/session", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const order = await getOrderForCustomer(c.env.DB, String(body.ref || ""), String(body.token || ""));
-  const result = await startCheckout(c.env, c.env.DB, order, originOf(c));
+  const returnOrigin = allowedOrigin(c, typeof body.returnOrigin === "string" ? body.returnOrigin : "");
+  const result = await startCheckout(c.env, c.env.DB, order, returnOrigin || publicOrigin(c));
   return c.json(result);
 });
 
@@ -640,14 +688,14 @@ adminApi.get("/settings", async (c) => {
       accountEmail: settings.google_account_email || "",
       calendarId: settings.google_calendar_id || "",
       calendarName: settings.google_calendar_name || BUSINESS.defaultCalendarName,
-      redirectUri: redirectUri(originOf(c)),
+      redirectUri: redirectUri(publicOrigin(c)),
     },
     stripe: {
       mode: stripe.mode,
       configured: stripe.configured,
       webhookConfigured: stripe.webhookConfigured,
       keyTail: stripe.secretKey ? `••••${stripe.secretKey.slice(-4)}` : "",
-      webhookUrl: `${originOf(c)}/api/stripe/webhook`,
+      webhookUrl: `${requestOrigin(c)}/api/stripe/webhook`,
     },
     admin: {
       usingDefaultPassword: settings.admin_password_default === "1" && !c.env.ADMIN_PASSWORD,
@@ -745,14 +793,19 @@ app.get("/admin/google/start", async (c) => {
   if (!(await isAdmin(c))) return c.redirect("/admin");
   try {
     const state = newToken(16);
-    setCookie(c, "afu_oauth_state", state, {
+    const oauthOrigin = publicOrigin(c);
+    const cookieOptions = {
       httpOnly: true,
-      sameSite: "Lax",
+      sameSite: "Lax" as const,
       secure: new URL(c.req.url).protocol === "https:",
       path: "/",
       maxAge: 600,
-    });
-    const url = await googleAuthUrl(c.env, c.env.DB, originOf(c), state);
+    };
+    setCookie(c, "afu_oauth_state", state, cookieOptions);
+    // Remember where the browser started so the callback uses the same
+    // redirect URI even when the API is proxied from another public origin.
+    setCookie(c, "afu_oauth_origin", oauthOrigin, cookieOptions);
+    const url = await googleAuthUrl(c.env, c.env.DB, oauthOrigin, state);
     return c.redirect(url);
   } catch (err) {
     const message = encodeURIComponent(err instanceof Error ? err.message : "Google connection could not start.");
@@ -764,7 +817,9 @@ app.get("/admin/google/callback", async (c) => {
   if (!(await isAdmin(c))) return c.redirect("/admin");
   const state = c.req.query("state") || "";
   const expected = getCookie(c, "afu_oauth_state") || "";
+  const savedOrigin = getCookie(c, "afu_oauth_origin") || "";
   deleteCookie(c, "afu_oauth_state", { path: "/" });
+  deleteCookie(c, "afu_oauth_origin", { path: "/" });
   if (!state || state !== expected) {
     return c.redirect("/admin?google=state#setup");
   }
@@ -773,7 +828,8 @@ app.get("/admin/google/callback", async (c) => {
     return c.redirect(`/admin?google=error&message=${encodeURIComponent(error)}#setup`);
   }
   try {
-    await exchangeGoogleCode(c.env, c.env.DB, c.req.query("code") || "", redirectUri(originOf(c)));
+    const oauthOrigin = allowedOrigin(c, savedOrigin) || publicOrigin(c);
+    await exchangeGoogleCode(c.env, c.env.DB, c.req.query("code") || "", redirectUri(oauthOrigin));
     const cal = await resolveDeliveryCalendar(c.env, c.env.DB);
     await clearBusyCache(c.env.DB);
     return c.redirect(`/admin?google=connected&calendar=${encodeURIComponent(cal.name)}#setup`);

@@ -714,7 +714,9 @@ async function submitBlock(event) {
 
 async function loadSetup() {
   try {
-    const data = await api("/api/admin/settings");
+    const origin = encodeURIComponent(location.origin);
+    $("#google-connect").href = `/admin/google/start?origin=${origin}`;
+    const data = await api(`/api/admin/settings?origin=${origin}`);
     state.setup = data;
 
     $("#google-redirect").textContent = data.google.redirectUri;
@@ -737,7 +739,7 @@ async function loadSetup() {
       $("#google-connect").textContent = "Connect Google Calendar";
     } else {
       googleDot.className = "status-dot bad";
-      googleStatus.textContent = "Not connected — add OAuth credentials below";
+      googleStatus.textContent = "Owner action needed — add Google OAuth credentials below";
       $("#google-connected-box").hidden = true;
     }
 

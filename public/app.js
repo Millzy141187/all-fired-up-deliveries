@@ -797,7 +797,7 @@ function renderReviewStep(container) {
     try {
       const data = await api("/api/checkout/session", {
         method: "POST",
-        body: { ref: reservation.ref, token: reservation.token },
+        body: { ref: reservation.ref, token: reservation.token, returnOrigin: location.origin },
       });
       if (!data.url) throw new Error("Checkout could not be started.");
       window.location.href = data.url;
