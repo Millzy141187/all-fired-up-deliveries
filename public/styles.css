@@ -286,7 +286,7 @@ p { margin: 0; }
 .slot span:first-child { font-size: 0.83rem; font-weight: 800; color: #3d352b; }
 .slot span:last-child { font-size: 0.71rem; color: #6e6254; }
 .slot.available:hover { border-color: var(--green); background: #f1f8f1; }
-.slot.selected { border-color: var(--green); background: var(--green); }
+.slot.selected, .slot.available.selected:hover { border-color: var(--green); background: var(--green); }
 .slot.selected span { color: #f4f8f0; }
 .slot.full, .slot.busy { background: #f4ede2; border-color: #ddcdb8; color: #8d7d69; cursor: not-allowed; }
 .slot.blocked, .slot.past { background: #f8f1e7; border-style: dashed; color: #a08f79; cursor: not-allowed; }
