@@ -93,6 +93,16 @@ export interface OrderRow {
   is_sample: number;
 }
 
+export interface OrderEmailRow {
+  id: string;
+  order_id: string;
+  to_email: string;
+  subject: string;
+  body: string;
+  gmail_id: string;
+  sent_at: string;
+}
+
 export interface BlockRow {
   id: string;
   date: string;
@@ -287,6 +297,16 @@ CREATE TABLE IF NOT EXISTS order_items (
   line_pence INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_items_order ON order_items(order_id);
+CREATE TABLE IF NOT EXISTS order_emails (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  to_email TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  gmail_id TEXT NOT NULL DEFAULT '',
+  sent_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_emails_order ON order_emails(order_id);
 CREATE TABLE IF NOT EXISTS blocks (
   id TEXT PRIMARY KEY,
   date TEXT NOT NULL,
@@ -340,7 +360,7 @@ async function initialise(db: D1Database): Promise<void> {
     const ready = await db
       .prepare("SELECT value FROM settings WHERE key = 'schema_version'")
       .first<{ value: string }>();
-    if (ready?.value === "1") return;
+    if (ready?.value === "2") return;
   } catch {
     // A fresh D1 database has no settings table yet.
   }
@@ -406,7 +426,7 @@ async function initialise(db: D1Database): Promise<void> {
   }
 
   // Written last so a partially completed first boot is retried.
-  await setSetting(db, "schema_version", "1");
+  await setSetting(db, "schema_version", "2");
 }
 
 export async function getSetting(db: D1Database, key: string): Promise<string | null> {
@@ -698,6 +718,14 @@ export async function orderItems(db: D1Database, orderId: string) {
     .prepare("SELECT * FROM order_items WHERE order_id = ? ORDER BY id")
     .bind(orderId)
     .all<{ id: number; order_id: string; product_id: string; name: string; qty: number; unit_pence: number; line_pence: number }>();
+  return rows.results ?? [];
+}
+
+export async function orderEmails(db: D1Database, orderId: string): Promise<OrderEmailRow[]> {
+  const rows = await db
+    .prepare("SELECT * FROM order_emails WHERE order_id = ? ORDER BY sent_at DESC")
+    .bind(orderId)
+    .all<OrderEmailRow>();
   return rows.results ?? [];
 }
 

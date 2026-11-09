@@ -23,6 +23,8 @@ const state = {
   blocks: [],
   calMonth: null,
   currentOrderId: null,
+  currentEmailFrom: "",
+  currentOrderItems: [],
   blockAck: false,
 };
 
@@ -241,6 +243,12 @@ function bindEvents() {
     }
   });
 
+  $("#order-body").addEventListener("submit", (event) => {
+    if (!event.target.closest("#order-email-form")) return;
+    event.preventDefault();
+    sendOrderEmail();
+  });
+
   $("#order-calendar").addEventListener("click", async () => {
     if (!state.currentOrderId) return;
     const button = $("#order-calendar");
@@ -405,9 +413,141 @@ async function openOrder(id, show = true) {
   }
 }
 
+function deliveryCountdown(dateStr) {
+  if (!dateStr) return "—";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const delivery = Date.UTC(y, m - 1, d);
+  const [ty, tm, td] = state.today.split("-").map(Number);
+  const today = Date.UTC(ty, tm - 1, td);
+  const diff = Math.round((delivery - today) / 86400000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff === -1) return "Yesterday";
+  return diff > 0 ? `In ${diff} days` : `${Math.abs(diff)} days ago`;
+}
+
+function dateTimeLabel(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-GB", {
+    day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function emailTemplate(order, items) {
+  const firstName = (order.customer_name || "").trim().split(/\s+/)[0] || "there";
+  const address = [order.address1, order.address2, order.city, order.postcode].filter(Boolean).join(", ");
+  const contents = (items || []).map((item) => `${item.qty} × ${item.name}`).join(", ");
+  return {
+    subject: `Your All Fired Up delivery — ${order.ref}`,
+    body: [
+      `Hi ${firstName},`,
+      "",
+      `A quick note about your firewood order ${order.ref}.`,
+      "",
+      `Delivery: ${dateLong(order.delivery_date)}, ${order.window_label}`,
+      `Address: ${address}`,
+      `Items: ${contents || "Firewood order"}`,
+      `Total: ${money(order.total_pence)}`,
+      "",
+      "If anything needs changing, just reply to this email or give us a call on 0000 000 000.",
+      "",
+      "Thanks,",
+      "All Fired Up",
+    ].join("\n"),
+  };
+}
+
+function emailPanelHtml(order, data) {
+  const info = data.email || {};
+  const emails = data.emails || [];
+  const template = emailTemplate(order, data.items || []);
+  const canSend = Boolean(info.ready);
+  const notice = !info.connected
+    ? `<div class="notice warn">Connect Google in Setup before emailing customers.</div>`
+    : !info.ready
+      ? `<div class="notice warn">The Google connection only has calendar access. <a href="/admin/google/start">Reconnect Google</a> to allow email from ${esc(info.from || "your Gmail account")}.</div>`
+      : `<p class="email-from">Sends from <strong>${esc(info.from || "your connected Google account")}</strong>. This is a real email to the customer.</p>`;
+
+  const history = emails.length
+    ? `<div class="email-history">
+        <h5>Sent messages (${emails.length})</h5>
+        ${emails.map((email) => `
+          <details>
+            <summary><strong>${esc(email.subject)}</strong><span>${esc(dateTimeLabel(email.sent_at))} · ${esc(email.to_email)}</span></summary>
+            <pre>${esc(email.body)}</pre>
+          </details>`).join("")}
+      </div>`
+    : `<div class="email-history"><h5>Sent messages</h5><p class="email-status">No emails sent from this dashboard yet.</p></div>`;
+
+  return `
+    <div class="email-panel">
+      <div class="email-panel-head">
+        <h4>Email the customer</h4>
+        <span class="email-channel">Gmail</span>
+      </div>
+      ${notice}
+      <form id="order-email-form">
+        <div class="field">
+          <label for="email-to">To</label>
+          <input id="email-to" value="${esc(order.email)}" readonly>
+        </div>
+        <div class="field">
+          <label for="email-subject">Subject</label>
+          <input id="email-subject" maxlength="160" value="${esc(template.subject)}" ${canSend ? "" : "disabled"}>
+        </div>
+        <div class="field">
+          <label for="email-message">Message</label>
+          <textarea id="email-message" rows="8" maxlength="6000" ${canSend ? "" : "disabled"}>${esc(template.body)}</textarea>
+        </div>
+        <div class="email-actions">
+          <button class="btn btn-sm" type="submit" id="email-send" ${canSend ? "" : "disabled"}>Send email</button>
+          <span class="email-status" id="email-status">${canSend ? `Ready to send to ${esc(order.email)}.` : "Email sending is not available until Google is reconnected."}</span>
+        </div>
+      </form>
+      ${history}
+    </div>`;
+}
+
+async function sendOrderEmail() {
+  const subject = ($("#email-subject")?.value || "").trim();
+  const message = ($("#email-message")?.value || "").trim();
+  const button = $("#email-send");
+  const status = $("#email-status");
+  if (subject.length < 3) { toast("Add a subject line.", "error"); return; }
+  if (message.length < 5) { toast("Write a message before sending.", "error"); return; }
+  if (!state.currentOrderId || !button) return;
+  button.disabled = true;
+  const label = button.textContent;
+  button.textContent = "Sending…";
+  if (status) status.textContent = `Sending from ${state.currentEmailFrom || "Google"}…`;
+  try {
+    const result = await api(`/api/admin/orders/${state.currentOrderId}/email`, {
+      method: "POST",
+      body: { subject, body: message },
+    });
+    toast(`Email sent to ${result.email.to_email}.`);
+    await openOrder(state.currentOrderId, false);
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = label;
+    if (status) status.textContent = "";
+    toast(err.message || "The email could not be sent.", "error");
+  }
+}
+
 function renderOrder(data) {
   const order = data.order;
   const items = data.items || [];
+  const history = data.customerHistory || {};
+  state.currentOrderItems = items;
+  state.currentEmailFrom = (data.email && data.email.from) || "";
+  const facts = `
+    <div class="order-facts">
+      <div><small>Delivery</small><strong>${esc(deliveryCountdown(order.delivery_date))}</strong><span>${dateShort(order.delivery_date)} · ${esc(order.window_label)}</span></div>
+      <div><small>Order total</small><strong>${money(order.total_pence)}</strong><span><span class="badge ${esc(order.payment_status)}">${esc(order.payment_status)}</span></span></div>
+      <div><small>Placed</small><strong>${dateShort(order.created_at.slice(0, 10))}</strong><span>${esc(dateTimeLabel(order.created_at).split(", ").slice(-1)[0])}</span></div>
+      <div><small>Customer history</small><strong>${history.paidOrders ? `${history.paidOrders} paid ${history.paidOrders === 1 ? "order" : "orders"}` : "First order"}</strong><span>${history.lastDelivery ? `Last ${dateShort(history.lastDelivery)}` : "No earlier deliveries"}</span></div>
+    </div>`;
   $("#order-title").textContent = order.ref;
   $("#order-subtitle").textContent = `${dateLong(order.delivery_date)} · ${order.window_label}${order.is_sample ? " · sample order" : ""}`;
   $("#order-calendar").hidden = !(order.payment_status === "paid" && !order.calendar_event_id);
@@ -422,12 +562,15 @@ function renderOrder(data) {
       : `<p style="font-size:.82rem;color:var(--muted)">The calendar event is created only after a confirmed payment.</p>`;
 
   $("#order-body").innerHTML = `
+    ${facts}
+
     <div class="order-detail-grid">
       <div class="detail-block">
         <h4>Customer</h4>
         <p><strong>${esc(order.customer_name)}</strong></p>
-        <p>${esc(order.phone)}</p>
-        <p style="overflow-wrap:anywhere">${esc(order.email)}</p>
+        <p><a href="tel:${esc(order.phone.replace(/\s+/g, ""))}">${esc(order.phone)}</a></p>
+        <p style="overflow-wrap:anywhere"><a href="mailto:${esc(order.email)}">${esc(order.email)}</a></p>
+        <p style="font-size:.74rem;color:var(--muted);margin-top:6px">${history.paidOrders ? `${history.paidOrders} previous paid ${history.paidOrders === 1 ? "order" : "orders"}` : "No previous paid orders"}</p>
       </div>
       <div class="detail-block">
         <h4>Delivery address</h4>
@@ -440,7 +583,7 @@ function renderOrder(data) {
       <h4>Order contents</h4>
       <table class="order-items">
         <tbody>
-          ${items.map((item) => `<tr><td>${item.qty} × ${esc(item.name)}</td><td>${money(item.line_pence)}</td></tr>`).join("")}
+          ${items.map((item) => `<tr><td>${item.qty} × ${esc(item.name)}<div style="font-size:.72rem;color:var(--muted)">${money(item.unit_pence)} each</div></td><td>${money(item.line_pence)}</td></tr>`).join("")}
         </tbody>
       </table>
       <div class="totals">
@@ -453,9 +596,10 @@ function renderOrder(data) {
     <div class="review-grid" style="margin-top:12px">
       <div class="detail-block">
         <h4>Payment</h4>
-        <p><span class="badge ${esc(order.payment_status)}">${esc(order.payment_status)}</span></p>
+        <p><span class="badge ${esc(order.payment_status)}">${esc(order.payment_status)}</span> <strong>${money(order.total_pence)}</strong></p>
         <p style="font-size:.78rem;color:var(--muted);margin-top:6px">Stripe test mode · order ${esc(order.ref)}</p>
-        ${order.paid_at ? `<p style="font-size:.78rem;color:var(--muted)">Paid ${esc(new Date(order.paid_at).toLocaleString("en-GB"))}</p>` : ""}
+        ${order.paid_at ? `<p style="font-size:.78rem;color:var(--muted)">Paid ${esc(dateTimeLabel(order.paid_at))}</p>` : `<p style="font-size:.78rem;color:var(--muted)">No payment received yet.</p>`}
+        ${order.stripe_payment_intent ? `<p class="mono" style="font-size:.72rem;color:var(--muted);overflow-wrap:anywhere">${esc(order.stripe_payment_intent)}</p>` : ""}
       </div>
       <div class="detail-block">
         <h4>Google Calendar</h4>
@@ -472,8 +616,10 @@ function renderOrder(data) {
           <button type="button" data-set-status="${value}" class="${order.status === value ? "current" : ""}">${label}</button>
         `).join("")}
       </div>
-      ${order.delivered_at ? `<p style="font-size:.76rem;color:var(--muted);margin-top:8px">Marked delivered ${esc(new Date(order.delivered_at).toLocaleString("en-GB"))}</p>` : ""}
+      ${order.delivered_at ? `<p style="font-size:.76rem;color:var(--muted);margin-top:8px">Marked delivered ${esc(dateTimeLabel(order.delivered_at))}</p>` : ""}
     </div>
+
+    ${emailPanelHtml(order, data)}
   `;
 }
 
@@ -730,13 +876,19 @@ async function loadSetup() {
       $("#google-connected-box").hidden = false;
       $("#google-account").textContent = data.google.accountEmail || "Google account connected";
       $("#google-calendar-name").textContent = data.google.calendarName;
-      $("#google-connect").textContent = "Reconnect Google Calendar";
+      const emailStatus = $("#google-email-status");
+      if (emailStatus) {
+        emailStatus.textContent = data.google.emailReady
+          ? `Ready — sends as ${data.google.accountEmail || "your Google account"}`
+          : "Reconnect to grant Gmail sending permission";
+      }
+      $("#google-connect").textContent = "Reconnect Google (calendar + email)";
       loadGoogleCalendars();
     } else if (data.google.clientConfigured) {
       googleDot.className = "status-dot";
       googleStatus.textContent = "Credentials saved — connect your Google account";
       $("#google-connected-box").hidden = true;
-      $("#google-connect").textContent = "Connect Google Calendar";
+      $("#google-connect").textContent = "Connect Google (calendar + email)";
     } else {
       googleDot.className = "status-dot bad";
       googleStatus.textContent = "Owner action needed — add Google OAuth credentials below";

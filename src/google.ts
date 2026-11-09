@@ -2,8 +2,16 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { BUSINESS, getSettings, setSetting, type BlockRow, type Env, type OrderRow } from "./db";
 import { addDays, londonToUtc, windowById } from "./time";
 
-const SCOPE = "https://www.googleapis.com/auth/calendar";
+export const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
+
+const SCOPES = [
+  "https://www.googleapis.com/auth/calendar",
+  GMAIL_SEND_SCOPE,
+  "https://www.googleapis.com/auth/userinfo.email",
+];
+const SCOPE = SCOPES.join(" ");
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
+const GMAIL_API = "https://gmail.googleapis.com/gmail/v1";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 export class GoogleError extends Error {
@@ -94,6 +102,7 @@ export async function exchangeGoogleCode(
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
+    scope?: string;
     error?: string;
     error_description?: string;
   };
@@ -103,6 +112,7 @@ export async function exchangeGoogleCode(
   await setSetting(db, "google_access_token", data.access_token);
   await setSetting(db, "google_access_expires", String(Date.now() + (data.expires_in ?? 3600) * 1000));
   if (data.refresh_token) await setSetting(db, "google_refresh_token", data.refresh_token);
+  if (data.scope) await setSetting(db, "google_scopes", data.scope);
 
   try {
     const infoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -521,4 +531,105 @@ export async function testCalendarAccess(env: Env, db: D1Database): Promise<{ ok
   }
   await clearBusyCache(db);
   return { ok: true, calendarName: cal.name };
+}
+
+/* ------------------------------------------------------------------ */
+/* Customer email (sent through the connected Gmail account)          */
+/* ------------------------------------------------------------------ */
+
+function base64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64Url(value: string): string {
+  return base64(new TextEncoder().encode(value))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function wrapBase64(value: string, width = 76): string {
+  const lines: string[] = [];
+  for (let i = 0; i < value.length; i += width) lines.push(value.slice(i, i + width));
+  return lines.join("\r\n");
+}
+
+function encodeHeader(value: string): string {
+  // Plain ASCII headers pass through; anything else is RFC 2047 encoded.
+  return /^[\x20-\x7E]*$/.test(value)
+    ? value
+    : `=?UTF-8?B?${base64(new TextEncoder().encode(value))}?=`;
+}
+
+export interface SentEmail {
+  id: string;
+  threadId: string;
+  from: string;
+}
+
+/**
+ * Send a plain-text email from the Google account connected for the delivery
+ * calendar. Requires the gmail.send scope, which is requested when the owner
+ * connects (or reconnects) Google in Setup.
+ */
+export async function sendCustomerEmail(
+  env: Env,
+  db: D1Database,
+  opts: { to: string; subject: string; text: string },
+): Promise<SentEmail> {
+  const cfg = await googleConfig(env, db);
+  if (!cfg.refreshToken) {
+    throw new GoogleError("Connect Google in Setup before emailing customers.", 400);
+  }
+  if (!cfg.accountEmail) {
+    throw new GoogleError("Reconnect Google so the sender email address is known.", 400);
+  }
+  const to = opts.to.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to)) {
+    throw new GoogleError("This order does not have a valid customer email address.", 400);
+  }
+  const from = cfg.accountEmail;
+  const mime = [
+    `From: "All Fired Up" <${from}>`,
+    `To: ${to}`,
+    `Subject: ${encodeHeader(opts.subject)}`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    wrapBase64(base64(new TextEncoder().encode(opts.text))),
+  ].join("\r\n");
+  const raw = base64Url(mime);
+
+  const attempt = async (token: string) =>
+    fetch(`${GMAIL_API}/users/me/messages/send`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ raw }),
+    });
+
+  let res = await attempt(await accessToken(env, db));
+  if (res.status === 401) {
+    res = await attempt(await accessToken(env, db, true));
+  }
+  const data = (await res.json().catch(() => ({}))) as {
+    id?: string;
+    threadId?: string;
+    error?: { message?: string };
+  };
+  if (!res.ok || !data.id) {
+    if (res.status === 403) {
+      throw new GoogleError(
+        "Gmail refused the message. Reconnect Google in Setup, accept the email permission and make sure the Gmail API is enabled for the project.",
+        403,
+      );
+    }
+    throw new GoogleError(data.error?.message || `Gmail returned ${res.status}.`, res.status === 401 ? 401 : 502);
+  }
+  return { id: data.id, threadId: data.threadId ?? "", from };
 }

@@ -495,6 +495,34 @@ table.orders .money { font-weight: 800; white-space: nowrap; }
 .steps-list { margin: 10px 0 0; padding-left: 18px; font-size: 0.78rem; color: #5f5548; display: grid; gap: 5px; }
 .steps-list code { background: var(--cream); padding: 1px 4px; border-radius: 3px; font-size: 0.72rem; }
 .divider { height: 1px; background: var(--line); margin: 15px 0; }
+
+/* Order detail extras and the customer email composer */
+.order-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.order-facts > div { background: var(--cream); border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; min-width: 0; }
+.order-facts small { display: block; font-size: 0.64rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.order-facts strong { display: block; font-size: 0.95rem; margin-top: 2px; color: var(--charcoal); }
+.order-facts span { display: block; font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+.order-facts .badge { font-size: 0.6rem; }
+.email-panel { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: #fffdf9; }
+.email-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.email-panel-head h4 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-family: var(--sans); }
+.email-channel { font-size: 0.66rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--green); background: var(--green-soft); border-radius: 999px; padding: 2px 8px; }
+.email-panel .field { margin-top: 10px; }
+.email-panel .notice { margin-bottom: 6px; }
+.email-panel .notice a { color: inherit; font-weight: 800; }
+.email-from { font-size: 0.76rem; color: var(--muted); margin-bottom: 4px; }
+.email-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.email-status { font-size: 0.75rem; color: var(--muted); }
+.email-history { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.email-history h5 { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.email-history details { border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; margin-bottom: 6px; background: var(--white); }
+.email-history summary { cursor: pointer; font-size: 0.8rem; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.email-history summary span { color: var(--muted); font-size: 0.72rem; font-weight: 400; }
+.email-history pre { margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 0.78rem; color: #4b4237; }
+@media (max-width: 640px) {
+  .order-facts { grid-template-columns: 1fr 1fr; }
+  .detail-block a { overflow-wrap: anywhere; }
+}
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: var(--charcoal); color: var(--cream); padding: 11px 18px; border-radius: 9px; font-size: 0.85rem; box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: 0.25s ease; z-index: 999; max-width: calc(100% - 32px); text-align: center; }

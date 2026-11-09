@@ -170,8 +170,8 @@
 
           <div class="setup-grid">
             <div class="card">
-              <h2>Google Calendar</h2>
-              <p>Bookings are checked against, and written to, your dedicated delivery calendar.</p>
+              <h2>Google Calendar &amp; email</h2>
+              <p>Bookings are checked against, and written to, your delivery calendar. The same connection sends customer emails from your Gmail address.</p>
               <div class="status-row">
                 <span class="status-dot" id="google-dot"></span>
                 <span id="google-status">Checking connection…</span>
@@ -181,6 +181,7 @@
                   <h4>Connected account</h4>
                   <p id="google-account">—</p>
                   <p style="font-size:.78rem;color:var(--muted);margin-top:4px">Calendar: <strong id="google-calendar-name">—</strong></p>
+                  <p style="font-size:.78rem;color:var(--muted);margin-top:4px">Customer email: <strong id="google-email-status">—</strong></p>
                 </div>
                 <div class="field">
                   <label for="google-calendar-select">Use this calendar</label>
@@ -212,10 +213,10 @@
                 </div>
                 <button class="btn btn-dark btn-sm" type="submit">Save credentials</button>
               </form>
-              <a class="btn btn-green btn-sm" href="/admin/google/start" id="google-connect">Connect Google Calendar</a>
+              <a class="btn btn-green btn-sm" href="/admin/google/start" id="google-connect">Connect Google (calendar + email)</a>
               <ol class="steps-list">
                 <li><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console → APIs &amp; Services → Credentials</a>.</li>
-                <li>Create an OAuth client ID for a <strong>Web application</strong>.</li>
+                <li>Enable the <strong>Google Calendar API</strong> and the <strong>Gmail API</strong>, then create an OAuth client ID for a <strong>Web application</strong>.</li>
                 <li>Add the redirect URI above as an authorised redirect URI.</li>
                 <li>Paste the client ID and secret, save, then connect.</li>
                 <li>The app looks for <strong>All Fired Up Deliveries</strong>, or creates it.</li>

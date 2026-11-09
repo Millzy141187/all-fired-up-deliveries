@@ -9,9 +9,11 @@ import {
   ensureDb,
   getSetting,
   getSettings,
+  orderEmails,
   orderItems,
   setSetting,
   type BlockRow,
+  type OrderEmailRow,
   type Env,
   type OrderRow,
   type ProductRow,
@@ -47,10 +49,12 @@ import {
   deleteCalendarEvent,
   exchangeGoogleCode,
   formatMoney,
+  GMAIL_SEND_SCOPE,
   getCalendar,
   googleAuthUrl,
   googleConfig,
   listGoogleCalendars,
+  sendCustomerEmail,
   redirectUri,
   resolveDeliveryCalendar,
   testCalendarAccess,
@@ -477,10 +481,30 @@ adminApi.get("/orders", async (c) => {
 adminApi.get("/orders/:id", async (c) => {
   const order = await getOrderById(c.env.DB, c.req.param("id"));
   if (!order) return c.json({ error: "Order not found." }, 404);
+  const [items, emails, emailSettings, history, calendarName] = await Promise.all([
+    orderItems(c.env.DB, order.id),
+    orderEmails(c.env.DB, order.id),
+    getSettings(c.env.DB, ["google_refresh_token", "google_account_email", "google_scopes"]),
+    c.env.DB.prepare(
+      "SELECT COUNT(*) AS n, MAX(delivery_date) AS last FROM orders WHERE email = ? AND id != ? AND payment_status = 'paid'",
+    )
+      .bind(order.email, order.id)
+      .first<{ n: number; last: string | null }>(),
+    getSetting(c.env.DB, "google_calendar_name"),
+  ]);
+  const granted = (emailSettings.google_scopes || "").split(/\s+/);
   return c.json({
     order: { ...order, totalLabel: formatMoney(order.total_pence) },
-    items: await orderItems(c.env.DB, order.id),
-    calendarName: (await getSetting(c.env.DB, "google_calendar_name")) || BUSINESS.defaultCalendarName,
+    items,
+    emails,
+    calendarName: calendarName || BUSINESS.defaultCalendarName,
+    email: {
+      connected: Boolean(emailSettings.google_refresh_token),
+      ready:
+        Boolean(emailSettings.google_refresh_token) && granted.includes(GMAIL_SEND_SCOPE),
+      from: emailSettings.google_account_email || "",
+    },
+    customerHistory: { paidOrders: history?.n ?? 0, lastDelivery: history?.last ?? null },
   });
 });
 
@@ -490,6 +514,38 @@ adminApi.patch("/orders/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const result = await changeOrderStatus(c.env, c.env.DB, order, String(body.status || ""));
   return c.json({ order: result.order, warning: result.calendarWarning });
+});
+
+adminApi.post("/orders/:id/email", async (c) => {
+  const order = await getOrderById(c.env.DB, c.req.param("id"));
+  if (!order) return c.json({ error: "Order not found." }, 404);
+  if (!order.email) throw new ValidationError("This order does not have a customer email address.");
+  const body = await c.req.json().catch(() => ({}));
+  const subject = typeof body.subject === "string" ? body.subject.trim().slice(0, 160) : "";
+  const message = typeof body.body === "string" ? body.body.trim().slice(0, 6000) : "";
+  if (subject.length < 3) throw new ValidationError("Add a subject line.");
+  if (message.length < 5) throw new ValidationError("Write a message before sending.");
+
+  const sent = await sendCustomerEmail(c.env, c.env.DB, {
+    to: order.email,
+    subject,
+    text: message,
+  });
+  const email: OrderEmailRow = {
+    id: crypto.randomUUID(),
+    order_id: order.id,
+    to_email: order.email,
+    subject,
+    body: message,
+    gmail_id: sent.id,
+    sent_at: new Date().toISOString(),
+  };
+  await c.env.DB.prepare(
+    "INSERT INTO order_emails (id, order_id, to_email, subject, body, gmail_id, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  )
+    .bind(email.id, email.order_id, email.to_email, email.subject, email.body, email.gmail_id, email.sent_at)
+    .run();
+  return c.json({ ok: true, email, from: sent.from }, 201);
 });
 
 adminApi.post("/orders/:id/calendar", async (c) => {
@@ -674,6 +730,7 @@ adminApi.get("/settings", async (c) => {
       "google_calendar_id",
       "google_calendar_name",
       "google_account_email",
+      "google_scopes",
       "stripe_secret_key",
       "stripe_webhook_secret",
       "admin_password_default",
@@ -686,6 +743,9 @@ adminApi.get("/settings", async (c) => {
       clientConfigured: Boolean(settings.google_client_id || c.env.GOOGLE_CLIENT_ID),
       clientId: settings.google_client_id || c.env.GOOGLE_CLIENT_ID ? "configured" : "",
       accountEmail: settings.google_account_email || "",
+      emailReady:
+        Boolean(settings.google_refresh_token) &&
+        (settings.google_scopes || "").split(/\s+/).includes(GMAIL_SEND_SCOPE),
       calendarId: settings.google_calendar_id || "",
       calendarName: settings.google_calendar_name || BUSINESS.defaultCalendarName,
       redirectUri: redirectUri(publicOrigin(c)),
@@ -719,7 +779,7 @@ adminApi.post("/settings", async (c) => {
     await setSetting(c.env.DB, "google_client_id", clientId);
     await setSetting(c.env.DB, "google_client_secret", clientSecret);
     if (previous && previous !== clientId) {
-      for (const key of ["google_refresh_token", "google_access_token", "google_access_expires", "google_account_email"]) {
+      for (const key of ["google_refresh_token", "google_access_token", "google_access_expires", "google_account_email", "google_scopes"]) {
         await setSetting(c.env.DB, key, "");
       }
     }
@@ -772,7 +832,7 @@ adminApi.post("/google/calendar", async (c) => {
 });
 
 adminApi.post("/google/disconnect", async (c) => {
-  for (const key of ["google_refresh_token", "google_access_token", "google_access_expires", "google_account_email", "google_busy_cache"]) {
+  for (const key of ["google_refresh_token", "google_access_token", "google_access_expires", "google_account_email", "google_scopes", "google_busy_cache"]) {
     await setSetting(c.env.DB, key, "");
   }
   return c.json({ ok: true });
