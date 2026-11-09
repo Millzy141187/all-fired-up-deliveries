@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="A stack of log nets filled with kiln-dried firewood">
+  <rect width="480" height="320" fill="#f1e4cf"/>
+  <circle cx="240" cy="170" r="130" fill="#e9d5b5"/>
+  <g>
+    <g transform="translate(78 118)">
+      <rect width="120" height="138" rx="18" fill="#7d5130"/>
+      <path d="M10 28h100M10 58h100M10 88h100M10 118h100" stroke="#d9c3a1" stroke-width="2" opacity=".65"/>
+      <path d="M28 8v122M60 8v122M92 8v122" stroke="#d9c3a1" stroke-width="2" opacity=".5"/>
+      <g fill="#c99b6b">
+        <circle cx="34" cy="44" r="15"/><circle cx="72" cy="34" r="13"/><circle cx="92" cy="66" r="12"/>
+        <circle cx="40" cy="88" r="12"/><circle cx="76" cy="102" r="14"/><circle cx="38" cy="120" r="10"/>
+      </g>
+      <path d="M8 18c30-16 76-16 104 0" stroke="#3b5c45" stroke-width="7" fill="none"/>
+    </g>
+    <g transform="translate(200 104)">
+      <rect width="120" height="138" rx="18" fill="#96633c"/>
+      <path d="M10 28h100M10 58h100M10 88h100M10 118h100" stroke="#d9c3a1" stroke-width="2" opacity=".6"/>
+      <path d="M28 8v122M60 8v122M92 8v122" stroke="#d9c3a1" stroke-width="2" opacity=".45"/>
+      <g fill="#d3a273">
+        <circle cx="34" cy="44" r="15"/><circle cx="72" cy="34" r="13"/><circle cx="92" cy="66" r="12"/>
+        <circle cx="40" cy="88" r="12"/><circle cx="76" cy="102" r="14"/><circle cx="38" cy="120" r="10"/>
+      </g>
+      <path d="M8 18c30-16 76-16 104 0" stroke="#2c4836" stroke-width="7" fill="none"/>
+    </g>
+    <g transform="translate(322 126)">
+      <rect width="100" height="120" rx="16" fill="#6d452b"/>
+      <path d="M8 26h84M8 54h84M8 82h84" stroke="#d9c3a1" stroke-width="2" opacity=".6"/>
+      <path d="M24 8v104M50 8v104M76 8v104" stroke="#d9c3a1" stroke-width="2" opacity=".45"/>
+      <g fill="#c99b6b">
+        <circle cx="30" cy="40" r="13"/><circle cx="64" cy="34" r="11"/><circle cx="36" cy="74" r="11"/>
+        <circle cx="68" cy="86" r="12"/><circle cx="34" cy="104" r="9"/>
+      </g>
+      <path d="M6 16c26-14 62-14 88 0" stroke="#3b5c45" stroke-width="6" fill="none"/>
+    </g>
+  </g>
+  <g opacity=".5" fill="#7b6a50">
+    <circle cx="88" cy="70" r="3"/><circle cx="404" cy="86" r="3"/><circle cx="410" cy="272" r="2.5"/>
+  </g>
+</svg>

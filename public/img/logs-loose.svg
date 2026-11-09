@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="A loose stack of kiln-dried hardwood logs">
+  <rect width="480" height="320" fill="#f1e4cf"/>
+  <circle cx="240" cy="170" r="132" fill="#e9d5b5"/>
+  <g>
+    <rect x="96" y="196" width="290" height="42" rx="21" fill="#6d452b"/>
+    <ellipse cx="386" cy="217" rx="20" ry="21" fill="#d3a273"/>
+    <ellipse cx="386" cy="217" rx="12" ry="13" fill="none" stroke="#a9774d" stroke-width="2.5"/>
+    <rect x="112" y="154" width="274" height="42" rx="21" fill="#8a5a35"/>
+    <ellipse cx="386" cy="175" rx="19" ry="21" fill="#d8ab7a"/>
+    <ellipse cx="386" cy="175" rx="11" ry="13" fill="none" stroke="#b07c50" stroke-width="2.5"/>
+    <rect x="130" y="112" width="250" height="40" rx="20" fill="#a06c42"/>
+    <ellipse cx="380" cy="132" rx="18" ry="20" fill="#dcb184"/>
+    <ellipse cx="380" cy="132" rx="10" ry="12" fill="none" stroke="#b07c50" stroke-width="2.5"/>
+    <rect x="150" y="72" width="216" height="38" rx="19" fill="#7d5130"/>
+    <ellipse cx="366" cy="91" rx="17" ry="19" fill="#d3a273"/>
+    <rect x="176" y="36" width="176" height="34" rx="17" fill="#96633c"/>
+    <ellipse cx="352" cy="53" rx="15" ry="17" fill="#dcb184"/>
+  </g>
+  <g fill="#5c3a22" opacity=".7">
+    <rect x="144" y="206" width="170" height="3" rx="1.5"/>
+    <rect x="160" y="164" width="150" height="3" rx="1.5"/>
+  </g>
+  <g opacity=".5" fill="#7b6a50">
+    <circle cx="84" cy="74" r="3"/><circle cx="402" cy="262" r="3.5"/><circle cx="74" cy="262" r="2.5"/>
+  </g>
+</svg>

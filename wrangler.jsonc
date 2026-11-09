@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "all-fired-up-deliveries",
+  "main": "dist/index.js",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "all-fired-up-deliveries",
+      "database_id": "11111111-1111-4111-8111-111111111111"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>All Fired Up — Quality kiln-dried logs, delivered locally</title>
+  <meta name="description" content="Order kiln-dried firewood, choose a local delivery slot and pay securely. Test version of the All Fired Up online ordering service.">
+  <link rel="icon" href="/img/brand-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <div class="topbar">
+    <div class="container">
+      <div class="topbar-left">
+        <span class="test-pill">Test version</span>
+        <span>Stripe test payments only — no real money is taken</span>
+      </div>
+      <div class="topbar-right">
+        <a href="tel:0000000000">0000 000 000</a>
+        <a href="/admin">Owner login</a>
+      </div>
+    </div>
+  </div>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/" aria-label="All Fired Up home">
+        <img class="brand-mark" src="/img/brand-mark.svg" alt="">
+        <span>
+          <span class="brand-name">All Fired Up</span>
+          <span class="brand-tag">Quality kiln-dried logs, delivered locally</span>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="#order">Order logs</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#delivery-area">Delivery area</a>
+      </nav>
+      <a class="header-call" href="tel:0000000000">
+        <span>
+          <small>Call the yard</small>
+          <strong>0000 000 000</strong>
+        </span>
+      </a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <p class="eyebrow">Local firewood, properly dry</p>
+          <h1>A proper fire,<br><em>delivered</em> to your door.</h1>
+          <p class="hero-lede">
+            Kiln-dried hardwood from our yard near Dereham, cut ready for stoves and open fires.
+            Choose your logs, pick a two-hour delivery window and leave the rest to us.
+          </p>
+          <div class="hero-actions">
+            <a class="btn" href="#order">Order firewood <span class="arrow" aria-hidden="true">→</span></a>
+            <a class="btn btn-outline" href="#how-it-works">How delivery works</a>
+          </div>
+          <ul class="hero-facts">
+            <li>Under 20% moisture</li>
+            <li>Locally sourced hardwood</li>
+            <li>Within 20 miles of Dereham</li>
+          </ul>
+        </div>
+        <div class="hero-art">
+          <img src="/img/hero-logs.svg" alt="Illustration of stacked kiln-dried logs with a warm flame" width="800" height="620">
+          <div class="hero-stamp">
+            <strong>Ready to burn</strong>
+            kiln-dried &amp; local
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="trust-strip">
+      <div class="container">
+        <div class="trust-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3c2 3 1 5 3 7 1 1 2 2 2 4a5 5 0 0 1-10 0c0-2 1-3 2-4 2-2 2-4 3-7Z"/><path d="M12 13c1 1 2 2 2 3a2 2 0 0 1-4 0c0-1 1-2 2-3Z"/></svg>
+          <span><strong>Kiln-dried</strong><span>Guaranteed under 20% moisture</span></span>
+        </div>
+        <div class="trust-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 17V8l9-4 9 4v9"/><path d="M3 17h18M7 17v3M17 17v3"/><path d="M8 11h8"/></svg>
+          <span><strong>Local delivery</strong><span>Around 20 miles from Dereham</span></span>
+        </div>
+        <div class="trust-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18M8 15h3"/></svg>
+          <span><strong>Pick your slot</strong><span>Two-hour weekday windows</span></span>
+        </div>
+        <div class="trust-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 7h16v11H4z"/><path d="M4 10h16M8 15h3"/><path d="M7 7V5h10v2"/></svg>
+          <span><strong>Test checkout</strong><span>Stripe test mode, no real charge</span></span>
+        </div>
+      </div>
+    </div>
+
+    <section class="section" id="order">
+      <div class="container">
+        <div class="flow-head" id="flow-head" hidden>
+          <div class="flow-title">
+            <div>
+              <h1 id="flow-title">Your order</h1>
+              <p id="flow-subtitle">Build your order, then choose a delivery slot.</p>
+            </div>
+            <span class="test-note">Test version — prices are placeholders</span>
+          </div>
+          <ol class="steps" id="steps" aria-label="Order progress"></ol>
+        </div>
+
+        <div id="shop-view">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Order online</p>
+              <h2>Build your firewood order</h2>
+              <p>Prices below are test placeholder prices. Delivery is free on orders over £250, otherwise £12.</p>
+            </div>
+            <span class="test-note">Test prices</span>
+          </div>
+
+          <div class="order-layout">
+            <div>
+              <div id="product-error" class="notice warn" hidden></div>
+              <div class="product-grid" id="product-grid" aria-live="polite"></div>
+              <div class="notice info" style="margin-top:18px">
+                Dumpy bags are delivered within 15 miles of our yard. Everything else travels across our
+                approximate 20-mile delivery area. Final availability is confirmed after you choose a date.
+              </div>
+            </div>
+            <aside class="summary" id="shop-summary" aria-label="Order summary"></aside>
+          </div>
+        </div>
+
+        <div class="flow-grid" id="flow-view" hidden>
+          <div id="step-content" aria-live="polite"></div>
+          <aside class="summary" id="flow-summary" aria-label="Order summary"></aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how-it-works" style="background:rgba(255,253,248,.62); border-block:1px solid var(--line)">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Simple from start to finish</p>
+            <h2>How ordering works</h2>
+            <p>Four straightforward steps, with a real delivery slot held while you pay.</p>
+          </div>
+        </div>
+        <div class="how-grid">
+          <article class="panel">
+            <p class="eyebrow">Step one</p>
+            <h3 style="font-size:1.2rem">Choose your logs</h3>
+            <p style="font-size:.86rem;color:var(--muted);margin-top:7px">Dumpy bags, loose loads, nets and fire starters. Add what you need — no account required.</p>
+          </article>
+          <article class="panel">
+            <p class="eyebrow">Step two</p>
+            <h3 style="font-size:1.2rem">Pick a window</h3>
+            <p style="font-size:.86rem;color:var(--muted);margin-top:7px">Weekday deliveries in two-hour windows, booked against our live delivery calendar.</p>
+          </article>
+          <article class="panel">
+            <p class="eyebrow">Step three</p>
+            <h3 style="font-size:1.2rem">Pay securely</h3>
+            <p style="font-size:.86rem;color:var(--muted);margin-top:7px">Stripe test checkout in this version. Use test card 4242 4242 4242 4242. No real money is taken.</p>
+          </article>
+          <article class="panel">
+            <p class="eyebrow">Step four</p>
+            <h3 style="font-size:1.2rem">We deliver</h3>
+            <p style="font-size:.86rem;color:var(--muted);margin-top:7px">Your booking appears in our delivery calendar and the slot is blocked for other customers.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="delivery-area">
+      <div class="container area-grid">
+        <div>
+          <p class="eyebrow">Local, not nationwide</p>
+          <h2 style="font-size:clamp(1.9rem,3.4vw,2.7rem)">Delivered around Dereham and beyond</h2>
+          <p style="color:var(--muted);margin-top:10px;max-width:36rem">
+            We deliver Monday to Friday, roughly 20 miles from our yard in Scarning. This test version accepts
+            sample postcodes beginning with NR, IP, PE or CB. We will confirm your address before delivery.
+          </p>
+          <ul class="hero-facts" style="margin-top:20px">
+            <li>Monday to Friday only</li>
+            <li>Four two-hour windows</li>
+            <li>Booked at least 24 hours ahead</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3 style="font-size:1.25rem">Delivery windows</h3>
+          <p style="font-size:.85rem;color:var(--muted);margin-top:5px">Choose the window that suits you at checkout.</p>
+          <div class="review-list" style="margin-top:14px">
+            <div class="review-line"><strong>Morning</strong><span>09:00 – 11:00</span></div>
+            <div class="review-line"><strong>Late morning</strong><span>11:00 – 13:00</span></div>
+            <div class="review-line"><strong>Early afternoon</strong><span>13:00 – 15:00</span></div>
+            <div class="review-line"><strong>Late afternoon</strong><span>15:00 – 17:00</span></div>
+          </div>
+          <p style="font-size:.74rem;color:var(--muted);margin-top:10px">Maximum two orders per window and six per day. If a window is full it will show as fully booked.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-brand">
+        <span class="brand-name">All Fired Up</span>
+        <p style="margin-top:9px">Quality kiln-dried logs, delivered locally around Dereham, Norfolk.</p>
+        <p style="margin-top:10px;color:#8f7f69;font-size:.75rem">This is a test version. Prices and content are placeholders.</p>
+      </div>
+      <div>
+        <h4>Order</h4>
+        <ul>
+          <li><a href="#order">Firewood &amp; fuel</a></li>
+          <li><a href="#how-it-works">How it works</a></li>
+          <li><a href="#delivery-area">Delivery area</a></li>
+          <li><a href="/admin">Owner dashboard</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Delivery</h4>
+        <ul>
+          <li>Monday to Friday</li>
+          <li>09:00–11:00 · 11:00–13:00</li>
+          <li>13:00–15:00 · 15:00–17:00</li>
+          <li>Approx. 20 miles from Dereham</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Talk to us</h4>
+        <ul>
+          <li><a href="tel:0000000000">0000 000 000</a></li>
+          <li><a href="mailto:orders@allfiredup.co.uk">orders@allfiredup.co.uk</a></li>
+          <li>Foresters Lodge, Bradenham Lane</li>
+          <li>Scarning, Dereham, Norfolk NR19 2LA</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="container">
+        <span>© <span id="year">2026</span> All Fired Up — test prototype. Original copy and placeholder artwork.</span>
+        <span>Payments: Stripe test mode · Calendar: All Fired Up Deliveries</span>
+      </div>
+    </div>
+  </footer>
+
+  <div class="mobile-bar" id="mobile-bar" hidden>
+    <div class="mb-total">
+      <small id="mobile-label">Order total</small>
+      <strong id="mobile-total">£0.00</strong>
+    </div>
+    <button class="btn" id="mobile-action" type="button">Continue</button>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

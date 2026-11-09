@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Order confirmation — All Fired Up (test version)</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/img/brand-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="container">
+      <div class="topbar-left">
+        <span class="test-pill">Test version</span>
+        <span>Stripe test payment · no real money taken</span>
+      </div>
+      <div class="topbar-right"><a href="/">Back to the shop</a></div>
+    </div>
+  </div>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/">
+        <img class="brand-mark" src="/img/brand-mark.svg" alt="">
+        <span>
+          <span class="brand-name">All Fired Up</span>
+          <span class="brand-tag">Quality kiln-dried logs, delivered locally</span>
+        </span>
+      </a>
+      <a class="header-call" href="tel:0000000000">
+        <span><small>Need a hand?</small><strong>0000 000 000</strong></span>
+      </a>
+    </div>
+  </header>
+
+  <main class="confirm-wrap">
+    <div class="confirm-card" id="loading-card">
+      <div class="confirm-top">
+        <div class="confirm-check" style="background:#3a3128"><span class="spinner" style="border-top-color:#e08a2e"></span></div>
+        <h1>Confirming your payment</h1>
+        <p>Please wait while we check the Stripe test payment.</p>
+      </div>
+      <div class="confirm-body">
+        <p style="text-align:center;color:var(--muted);font-size:.9rem">This usually takes a few seconds. Do not refresh the page.</p>
+      </div>
+    </div>
+
+    <div class="confirm-card" id="result-card" hidden>
+      <div class="confirm-top" id="result-top">
+        <div class="confirm-check" id="result-icon">✓</div>
+        <h1 id="result-title">Order confirmed</h1>
+        <p id="result-subtitle">Your delivery is booked.</p>
+        <div class="ref-chip" id="result-ref">AFU-000000</div>
+      </div>
+      <div class="confirm-body" id="result-body"></div>
+    </div>
+
+    <div class="confirm-card" id="error-card" hidden>
+      <div class="confirm-top" style="background:#4a2a23">
+        <div class="confirm-check" style="background:#a63f2f">!</div>
+        <h1>We could not load this order</h1>
+        <p id="error-message">The link may be incomplete.</p>
+      </div>
+      <div class="confirm-body" style="text-align:center">
+        <p style="color:var(--muted);font-size:.9rem">If you have just paid, please check your order with us before trying again.</p>
+        <div class="confirm-actions" style="justify-content:center">
+          <a class="btn" href="/">Return to the shop</a>
+          <a class="btn btn-outline" href="tel:0000000000">Call 0000 000 000</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <div class="container">
+        <span>All Fired Up — test prototype. No real payment or customer email is sent.</span>
+        <span><a href="/admin">Owner dashboard</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/confirmation.js" type="module"></script>
+</body>
+</html>

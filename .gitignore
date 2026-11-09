@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.wrangler/
+.logs/
+.ssh/
+.vercel/
+.dev-server.pid
+.dev.vars
+.env
+*.log
+.DS_Store

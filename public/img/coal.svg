@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="A 25kg bag of smokeless coal">
+  <rect width="480" height="320" fill="#f1e4cf"/>
+  <circle cx="240" cy="170" r="128" fill="#e9d5b5"/>
+  <path d="M156 74h168l24 168c2 14-10 26-24 26H156c-14 0-26-12-24-26z" fill="#33302c"/>
+  <path d="M156 74h168l4 30H152z" fill="#242220"/>
+  <path d="M184 74c10-14 26-22 46-22h20c20 0 36 8 46 22" fill="none" stroke="#4a453f" stroke-width="10" stroke-linecap="round"/>
+  <rect x="184" y="132" width="112" height="86" rx="8" fill="#f5ecdc"/>
+  <text x="240" y="166" text-anchor="middle" font-family="Georgia, serif" font-size="22" fill="#33302c">SMOKELESS</text>
+  <text x="240" y="190" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" letter-spacing="4" fill="#7b5630">COAL</text>
+  <text x="240" y="208" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#33302c">25 kg</text>
+  <g fill="#4a453f">
+    <circle cx="164" cy="248" r="7"/><circle cx="188" cy="258" r="5"/><circle cx="314" cy="250" r="6"/>
+  </g>
+  <g opacity=".5" fill="#7b6a50">
+    <circle cx="88" cy="84" r="3"/><circle cx="404" cy="98" r="3.5"/><circle cx="90" cy="262" r="2.5"/>
+  </g>
+</svg>

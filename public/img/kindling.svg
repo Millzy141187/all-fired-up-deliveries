@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="A bundle of dry kindling sticks">
+  <rect width="480" height="320" fill="#f1e4cf"/>
+  <circle cx="240" cy="170" r="128" fill="#e9d5b5"/>
+  <g transform="translate(120 70) rotate(-4 120 90)">
+    <rect x="22" y="42" width="196" height="132" rx="14" fill="#f8eedb" opacity=".8"/>
+    <g fill="#b88455">
+      <rect x="36" y="60" width="168" height="15" rx="7" transform="rotate(-6 120 67)"/>
+      <rect x="38" y="86" width="164" height="13" rx="6" transform="rotate(4 120 92)"/>
+      <rect x="34" y="110" width="176" height="14" rx="7" transform="rotate(-3 120 117)"/>
+      <rect x="40" y="136" width="158" height="12" rx="6" transform="rotate(5 120 142)"/>
+    </g>
+    <rect x="16" y="40" width="208" height="10" rx="5" fill="#3b5c45"/>
+    <rect x="16" y="164" width="208" height="10" rx="5" fill="#3b5c45"/>
+    <rect x="78" y="38" width="10" height="140" fill="#3b5c45" opacity=".85"/>
+  </g>
+  <g stroke="#8a5a35" stroke-width="4" stroke-linecap="round" opacity=".8">
+    <path d="M336 228l40-22M340 246l46-12"/>
+  </g>
+  <g opacity=".5" fill="#7b6a50">
+    <circle cx="86" cy="80" r="3"/><circle cx="406" cy="90" r="3.5"/><circle cx="94" cy="262" r="2.5"/>
+  </g>
+</svg>

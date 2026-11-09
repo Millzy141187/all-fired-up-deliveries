@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="A large dumpy bag filled with kiln-dried logs">
+  <rect width="480" height="320" fill="#f1e4cf"/>
+  <circle cx="240" cy="168" r="130" fill="#e9d5b5"/>
+  <path d="M140 108h200l18 150c2 20-14 34-34 34H156c-20 0-36-14-34-34z" fill="#3b5c45"/>
+  <path d="M140 108h200l4 34H136z" fill="#2c4836"/>
+  <g fill="#8a5a35">
+    <rect x="162" y="96" width="140" height="24" rx="12"/>
+    <ellipse cx="302" cy="108" rx="12" ry="12" fill="#d3a273"/>
+    <rect x="180" y="74" width="120" height="22" rx="11" fill="#a06c42"/>
+    <ellipse cx="300" cy="85" rx="11" ry="11" fill="#dcb184"/>
+    <rect x="200" y="55" width="92" height="19" rx="9" fill="#8a5a35"/>
+    <ellipse cx="292" cy="64" rx="9" ry="9" fill="#d3a273"/>
+  </g>
+  <path d="M212 152h56l10 66h-76z" fill="#f6ecdb" opacity=".92"/>
+  <path d="M226 162h28v18h-28zM220 190h40v20h-40z" fill="#3b5c45" opacity=".65"/>
+  <path d="M164 236c30 16 122 16 152 0" stroke="#28412f" stroke-width="4" fill="none" opacity=".5"/>
+  <g opacity=".5" fill="#7b6a50">
+    <circle cx="96" cy="86" r="3"/><circle cx="388" cy="120" r="4"/><circle cx="116" cy="244" r="2.5"/><circle cx="370" cy="256" r="3"/>
+  </g>
+</svg>

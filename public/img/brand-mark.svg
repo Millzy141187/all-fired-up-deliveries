@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="All Fired Up flame">
+  <rect width="64" height="64" rx="16" fill="#e08a2e"/>
+  <path d="M32 9c5 8 2 12 6 16 2 3 6 2 6 8 0 9-8 15-15 14-9-1-14-9-11-17 2-5 6-6 8-11 1-3 1-6 3-8 1-1 2-1 3-2z" fill="#211c17"/>
+  <path d="M33 24c2 5 1 8 4 10 2 2 3 1 3 4 0 5-5 8-9 7-5-1-8-5-6-10 1-3 3-4 4-6 1-2 1-4 2-5 1 0 2 0 2 0z" fill="#fbe6c6"/>
+</svg>

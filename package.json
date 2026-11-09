@@ -1,0 +1,22 @@
+{
+  "name": "all-fired-up-deliveries",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "All Fired Up — firewood ordering and delivery test application",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.js --platform=neutral --target=es2022",
+    "dev": "wrangler dev --local --ip 0.0.0.0 --port 3000",
+    "start": "npm run build && npm run dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.13.17"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261109.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.159.0"
+  }
+}

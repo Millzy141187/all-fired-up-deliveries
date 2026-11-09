@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo payment — All Fired Up (test version)</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/img/brand-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-body">
+  <div class="topbar">
+    <div class="container">
+      <div class="topbar-left">
+        <span class="test-pill">Demo checkout</span>
+        <span>Stripe test mode is not configured yet</span>
+      </div>
+      <div class="topbar-right"><a href="/">Back to the shop</a></div>
+    </div>
+  </div>
+
+  <main class="confirm-wrap" style="width:min(620px,100% - 32px)">
+    <div class="confirm-card">
+      <div class="confirm-top">
+        <div class="confirm-check" style="background:#b08a4a">£</div>
+        <h1>Demo payment</h1>
+        <p>This page stands in for Stripe Checkout until test keys are added.</p>
+        <div class="ref-chip" id="demo-ref">—</div>
+      </div>
+      <div class="confirm-body">
+        <div class="notice info">
+          <strong>No card details are collected here.</strong> This is a simulated payment page for the prototype.
+          Add Stripe test keys in the owner dashboard to use the real Stripe test checkout.
+        </div>
+        <div id="demo-summary" style="margin-top:6px"></div>
+        <div class="pay-banner" style="margin-top:20px">
+          <h3>Simulate a successful test payment</h3>
+          <p>The booking will be confirmed and, when Google Calendar is connected, the delivery event will be created.</p>
+        </div>
+        <div class="confirm-actions">
+          <button class="btn btn-green" id="demo-pay" type="button">Pay and confirm test order</button>
+          <a class="btn btn-outline" href="/">Cancel</a>
+        </div>
+        <p style="font-size:.75rem;color:var(--muted);margin-top:18px">
+          This is not a Stripe page and takes no payment. It exists so the customer journey can be tested end to end.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/demo-pay.js" type="module"></script>
+</body>
+</html>

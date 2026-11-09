@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="A box of natural firelighters">
+  <rect width="480" height="320" fill="#f1e4cf"/>
+  <circle cx="240" cy="170" r="128" fill="#e9d5b5"/>
+  <g transform="translate(132 78)">
+    <path d="M18 0h180l18 44v144c0 8-6 14-14 14H14c-8 0-14-6-14-14V44z" fill="#3b5c45"/>
+    <path d="M18 0h180l18 44H0z" fill="#2c4836"/>
+    <rect x="18" y="66" width="164" height="82" rx="8" fill="#f8eedb"/>
+    <text x="100" y="106" text-anchor="middle" font-family="Georgia, serif" font-size="25" fill="#2c4836">ALL FIRED UP</text>
+    <text x="100" y="130" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" letter-spacing="2" fill="#7b5630">NATURAL FIRELIGHTERS</text>
+    <g transform="translate(74 160)">
+      <circle cx="0" cy="24" r="20" fill="#d9a35f"/>
+      <circle cx="36" cy="14" r="20" fill="#e3b475"/>
+      <circle cx="72" cy="26" r="20" fill="#c98e4b"/>
+      <path d="M-10 28c6-16 12-18 18-30 6 12 14 16 12 30-4 12-26 12-30 0z" fill="#3b5c45" opacity=".35"/>
+    </g>
+    <path d="M0 44h216" stroke="#d9c3a1" stroke-width="2" opacity=".35"/>
+  </g>
+  <g opacity=".5" fill="#7b6a50">
+    <circle cx="82" cy="96" r="3"/><circle cx="402" cy="232" r="3.5"/><circle cx="78" cy="252" r="2.5"/>
+  </g>
+</svg>

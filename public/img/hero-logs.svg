@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 620" role="img" aria-labelledby="title">
+  <title id="title">Illustration of stacked kiln-dried logs with a warm flame</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f261e"/>
+      <stop offset="1" stop-color="#1d1915"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="55%">
+      <stop offset="0" stop-color="#f3a64c" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#f3a64c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="log" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a9744a"/>
+      <stop offset="1" stop-color="#6d452b"/>
+    </linearGradient>
+    <linearGradient id="logDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8c5d3a"/>
+      <stop offset="1" stop-color="#55351f"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#e2621f"/>
+      <stop offset=".55" stop-color="#f2a02f"/>
+      <stop offset="1" stop-color="#ffd77a"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="620" rx="0" fill="url(#bg)"/>
+  <circle cx="400" cy="260" r="240" fill="url(#glow)"/>
+  <g opacity=".18" stroke="#f0c58b" stroke-width="2" fill="none">
+    <path d="M40 120h180M600 90h150M80 180h90M620 200h120M60 480h120M650 500h100"/>
+  </g>
+  <g transform="translate(400 300)">
+    <path d="M0 -155c26 38 12 58 30 76 12 12 26 6 26 32 0 42-36 66-70 62-42-5-66-40-54-80 7-24 27-29 36-50 7-16 4-28 12-40 6 0 14 0 20 0z" fill="url(#flame)"/>
+    <path d="M8 -80c11 22 2 34 12 44 7 8 14 4 14 18 0 24-20 38-40 35-24-3-36-24-29-46 4-14 15-17 20-29 4-9 2-16 7-22 5 0 11 0 16 0z" fill="#ffe3a1" opacity=".9"/>
+    <g>
+      <rect x="-250" y="120" width="220" height="72" rx="34" fill="url(#logDark)"/>
+      <ellipse cx="-30" cy="156" rx="34" ry="36" fill="#d3a273"/>
+      <ellipse cx="-30" cy="156" rx="22" ry="24" fill="none" stroke="#a9774d" stroke-width="3"/>
+      <ellipse cx="-30" cy="156" rx="10" ry="12" fill="none" stroke="#a9774d" stroke-width="2"/>
+      <rect x="20" y="118" width="230" height="74" rx="36" fill="url(#log)"/>
+      <ellipse cx="250" cy="155" rx="30" ry="37" fill="#d8ab7a"/>
+      <ellipse cx="250" cy="155" rx="19" ry="25" fill="none" stroke="#b07c50" stroke-width="3"/>
+      <ellipse cx="250" cy="155" rx="8" ry="12" fill="none" stroke="#b07c50" stroke-width="2"/>
+      <rect x="-160" y="52" width="220" height="70" rx="34" fill="url(#log)"/>
+      <ellipse cx="60" cy="86" rx="30" ry="35" fill="#d8ab7a"/>
+      <ellipse cx="60" cy="86" rx="19" ry="23" fill="none" stroke="#b07c50" stroke-width="3"/>
+      <rect x="-80" y="-8" width="210" height="66" rx="32" fill="url(#logDark)"/>
+      <ellipse cx="130" cy="24" rx="28" ry="33" fill="#d3a273"/>
+      <ellipse cx="130" cy="24" rx="17" ry="21" fill="none" stroke="#a9774d" stroke-width="3"/>
+    </g>
+    <g fill="#f7d8a8" opacity=".45">
+      <circle cx="-190" cy="100" r="3"/><circle cx="120" cy="76" r="2.5"/><circle cx="200" cy="130" r="3"/>
+      <circle cx="-120" cy="40" r="2"/><circle cx="60" cy="160" r="2.5"/><circle cx="300" cy="90" r="2"/>
+    </g>
+  </g>
+  <path d="M0 520c120-24 210 10 330-4s250-36 470-6v110H0z" fill="#17130f" opacity=".55"/>
+</svg>

@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Owner dashboard — All Fired Up (test)</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/img/brand-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-body">
+  <div class="admin-login-wrap" id="login-view">
+    <div class="admin-login">
+      <a class="brand" href="/">
+        <img class="brand-mark" src="/img/brand-mark.svg" alt="">
+        <span>
+          <span class="brand-name">All Fired Up</span>
+          <span class="brand-tag">Delivery dashboard</span>
+        </span>
+      </a>
+      <h1>Owner sign in</h1>
+      <p>Manage test orders, delivery availability and calendar connections.</p>
+      <form id="login-form">
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" autocomplete="current-password" required>
+        </div>
+        <p class="error-text" id="login-error" hidden></p>
+        <button class="btn btn-block" type="submit" id="login-button">Sign in →</button>
+      </form>
+      <div class="hint-box" id="demo-hint" hidden>
+        <strong>Demo password:</strong> <span class="mono" id="demo-password">firewood2026</span><br>
+        Change this in Setup before sharing the URL.
+      </div>
+      <p style="margin-top:16px;font-size:.76rem;color:var(--muted);text-align:center">
+        <a href="/">← Back to the shop</a>
+      </p>
+    </div>
+  </div>
+
+  <div id="admin-view" hidden>
+    <header class="admin-header">
+      <div class="container">
+        <a class="brand" href="/">
+          <img class="brand-mark" src="/img/brand-mark.svg" alt="">
+          <span>
+            <span class="brand-name">All Fired Up</span>
+            <span class="brand-tag">Delivery dashboard · test</span>
+          </span>
+        </a>
+        <nav class="admin-tabs" aria-label="Dashboard sections">
+          <button type="button" data-tab="orders" class="active">Orders</button>
+          <button type="button" data-tab="calendar">Calendar</button>
+          <button type="button" data-tab="availability">Availability</button>
+          <button type="button" data-tab="setup">Setup</button>
+        </nav>
+        <div class="admin-user">
+          <span id="admin-mode">Stripe test mode</span>
+          <button type="button" id="logout">Sign out</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="admin-main">
+      <div class="container">
+
+        <section data-panel="orders">
+          <div class="admin-page-head">
+            <div>
+              <h1>Orders</h1>
+              <p>Upcoming deliveries, customer details, payment status and calendar sync.</p>
+            </div>
+            <button class="btn btn-outline btn-sm" type="button" id="refresh-orders">Refresh</button>
+          </div>
+
+          <div class="stat-grid">
+            <div class="stat"><small>Upcoming paid orders</small><strong id="stat-upcoming">—</strong></div>
+            <div class="stat"><small>Deliveries today</small><strong id="stat-today">—</strong></div>
+            <div class="stat"><small>Upcoming order value</small><strong id="stat-value">—</strong></div>
+            <div class="stat" id="stat-issues-card"><small>Calendar issues</small><strong id="stat-issues">—</strong></div>
+          </div>
+
+          <div class="toolbar">
+            <input type="search" id="order-search" placeholder="Search name, postcode, order ID or date…" aria-label="Search orders">
+            <select id="order-status" aria-label="Filter by status">
+              <option value="">All statuses</option>
+              <option value="new">New</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="out_for_delivery">Out for delivery</option>
+              <option value="delivered">Delivered</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="refunded">Refunded</option>
+            </select>
+            <input type="date" id="order-date" aria-label="Filter by delivery date">
+            <span class="count" id="order-count"></span>
+          </div>
+
+          <div class="table-wrap">
+            <table class="orders">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Customer</th>
+                  <th>Delivery</th>
+                  <th>Items</th>
+                  <th>Total</th>
+                  <th>Payment</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="orders-body"></tbody>
+            </table>
+            <div class="empty" id="orders-empty" hidden>No orders match these filters.</div>
+          </div>
+        </section>
+
+        <section data-panel="calendar" hidden>
+          <div class="admin-page-head">
+            <div>
+              <h1>Delivery calendar</h1>
+              <p>Order volume, blocked days and delivery windows at a glance.</p>
+            </div>
+            <span class="test-note">Google Calendar: All Fired Up Deliveries</span>
+          </div>
+          <div class="calendar-shell">
+            <div class="calendar-toolbar">
+              <button class="btn btn-outline btn-sm" type="button" id="cal-prev">← Previous</button>
+              <h2 id="cal-title">Month</h2>
+              <button class="btn btn-outline btn-sm" type="button" id="cal-next">Next →</button>
+            </div>
+            <div class="calendar-weekdays" aria-hidden="true">
+              <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+            </div>
+            <div class="calendar-grid" id="cal-grid"></div>
+          </div>
+          <div class="calendar-shell cal-day-panel" id="day-panel" hidden>
+            <h3 id="day-panel-title" style="font-size:1.25rem"></h3>
+            <div class="day-schedule" id="day-schedule" style="margin-top:12px"></div>
+          </div>
+        </section>
+
+        <section data-panel="availability" hidden>
+          <div class="admin-page-head">
+            <div>
+              <h1>Availability manager</h1>
+              <p>Close whole days or individual windows, reduce capacity and leave an internal note.</p>
+            </div>
+            <button class="btn btn-sm" type="button" id="add-block">Block a date</button>
+          </div>
+          <div class="notice info">
+            Closing a day that already has paid orders will show a warning. Paid orders are never deleted or cancelled automatically.
+          </div>
+          <div class="card" style="padding:0;margin-bottom:18px">
+            <div id="availability-list"></div>
+          </div>
+          <h2 style="font-size:1.3rem;margin:0 0 10px">Blocks and closures</h2>
+          <div class="card" style="padding:0">
+            <div id="block-list"></div>
+          </div>
+        </section>
+
+        <section data-panel="setup" hidden>
+          <div class="admin-page-head">
+            <div>
+              <h1>Setup &amp; connections</h1>
+              <p>Connect the real Google Calendar and keep Stripe in test mode.</p>
+            </div>
+            <span class="test-note">Test environment</span>
+          </div>
+
+          <div class="setup-grid">
+            <div class="card">
+              <h2>Google Calendar</h2>
+              <p>Bookings are checked against, and written to, your dedicated delivery calendar.</p>
+              <div class="status-row">
+                <span class="status-dot" id="google-dot"></span>
+                <span id="google-status">Checking connection…</span>
+              </div>
+              <div id="google-connected-box" hidden>
+                <div class="detail-block" style="margin-bottom:12px">
+                  <h4>Connected account</h4>
+                  <p id="google-account">—</p>
+                  <p style="font-size:.78rem;color:var(--muted);margin-top:4px">Calendar: <strong id="google-calendar-name">—</strong></p>
+                </div>
+                <div class="field">
+                  <label for="google-calendar-select">Use this calendar</label>
+                  <select id="google-calendar-select"></select>
+                </div>
+                <button class="btn btn-outline btn-sm" type="button" id="save-calendar">Save calendar choice</button>
+                <div class="divider"></div>
+                <button class="btn btn-outline btn-sm" type="button" id="google-test">Send a test event</button>
+                <button class="btn btn-outline btn-sm" type="button" id="google-disconnect">Disconnect</button>
+              </div>
+
+              <div class="divider"></div>
+              <h3 style="font-size:1rem;margin-bottom:4px">Google OAuth credentials</h3>
+              <p style="font-size:.78rem;color:var(--muted);margin-bottom:8px">
+                Create a Web application OAuth client in Google Cloud, enable the Google Calendar API, and add this redirect URI:
+              </p>
+              <div class="copy-row">
+                <code id="google-redirect">—</code>
+                <button type="button" data-copy="google-redirect">Copy</button>
+              </div>
+              <form id="google-client-form" style="margin-top:12px">
+                <div class="field">
+                  <label for="google-client-id">Client ID</label>
+                  <input id="google-client-id" autocomplete="off" placeholder="…apps.googleusercontent.com">
+                </div>
+                <div class="field">
+                  <label for="google-client-secret">Client secret</label>
+                  <input id="google-client-secret" type="password" autocomplete="off" placeholder="Paste the client secret">
+                </div>
+                <button class="btn btn-dark btn-sm" type="submit">Save credentials</button>
+              </form>
+              <a class="btn btn-green btn-sm" href="/admin/google/start" id="google-connect">Connect Google Calendar</a>
+              <ol class="steps-list">
+                <li>Google Cloud Console → APIs &amp; Services → Credentials.</li>
+                <li>Create an OAuth client ID for a <strong>Web application</strong>.</li>
+                <li>Add the redirect URI above as an authorised redirect URI.</li>
+                <li>Paste the client ID and secret, save, then connect.</li>
+                <li>The app looks for <strong>All Fired Up Deliveries</strong>, or creates it.</li>
+              </ol>
+            </div>
+
+            <div class="card">
+              <h2>Stripe payments</h2>
+              <p>Only test-mode keys are accepted. Live keys are rejected by the server.</p>
+              <div class="status-row">
+                <span class="status-dot" id="stripe-dot"></span>
+                <span id="stripe-status">Checking Stripe…</span>
+              </div>
+              <div class="notice warn" id="stripe-demo-note" hidden>
+                Stripe is not configured, so the app is using the clearly labelled <strong>demo checkout</strong>.
+                Add a test secret key to use real Stripe Checkout.
+              </div>
+              <form id="stripe-form">
+                <div class="field">
+                  <label for="stripe-key">Stripe test secret key</label>
+                  <input id="stripe-key" type="password" autocomplete="off" placeholder="sk_test_…">
+                  <p class="hint" id="stripe-key-hint"></p>
+                </div>
+                <div class="field">
+                  <label for="stripe-webhook">Webhook signing secret</label>
+                  <input id="stripe-webhook" type="password" autocomplete="off" placeholder="whsec_…">
+                </div>
+                <button class="btn btn-dark btn-sm" type="submit">Save Stripe settings</button>
+              </form>
+              <div class="divider"></div>
+              <h3 style="font-size:1rem;margin-bottom:4px">Webhook endpoint</h3>
+              <p style="font-size:.78rem;color:var(--muted)">Add this endpoint in Stripe (test mode) and subscribe to <span class="mono">checkout.session.completed</span>.</p>
+              <div class="copy-row">
+                <code id="stripe-webhook-url">—</code>
+                <button type="button" data-copy="stripe-webhook-url">Copy</button>
+              </div>
+              <div class="pay-banner" style="margin-top:14px">
+                <h3>Test card</h3>
+                <p>4242 4242 4242 4242 · any future expiry · any CVC · any postcode.</p>
+              </div>
+            </div>
+
+            <div class="card" style="grid-column:1/-1">
+              <h2>Admin password</h2>
+              <p>The demo password is fine for private testing, but change it before sharing this URL.</p>
+              <div class="notice warn" id="default-password-note" hidden>
+                This dashboard is still using the demo password. Change it below.
+              </div>
+              <form id="password-form" class="form-grid" style="grid-template-columns:1fr 1fr">
+                <div class="field">
+                  <label for="current-password">Current password</label>
+                  <input id="current-password" type="password" autocomplete="current-password" required>
+                </div>
+                <div class="field">
+                  <label for="new-password">New password (8+ characters)</label>
+                  <input id="new-password" type="password" autocomplete="new-password" minlength="8" required>
+                </div>
+                <div class="field full" style="flex-direction:row;align-items:center;gap:12px">
+                  <button class="btn btn-sm" type="submit">Update password</button>
+                  <span style="font-size:.78rem;color:var(--muted)">The password is stored as a salted hash.</span>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <dialog class="dialog" id="order-dialog">
+    <div class="dialog-head">
+      <div>
+        <h2 id="order-title">Order</h2>
+        <small id="order-subtitle"></small>
+      </div>
+      <button class="dialog-close" type="button" data-close aria-label="Close">×</button>
+    </div>
+    <div class="dialog-body" id="order-body"></div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline btn-sm" type="button" id="order-calendar" hidden>Retry calendar sync</button>
+      <button class="btn btn-sm" type="button" data-close>Close</button>
+    </div>
+  </dialog>
+
+  <dialog class="dialog" id="block-dialog">
+    <form method="dialog" id="block-form">
+      <div class="dialog-head">
+        <div>
+          <h2>Block delivery availability</h2>
+          <small>Close a whole day or a single window. Paid orders are untouched.</small>
+        </div>
+        <button class="dialog-close" type="button" data-block-close aria-label="Close">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="notice warn" id="block-warning" hidden></div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="block-date">Date</label>
+            <input type="date" id="block-date" required>
+          </div>
+          <div class="field">
+            <label for="block-scope">What to block</label>
+            <select id="block-scope">
+              <option value="day">Whole day</option>
+              <option value="window">One delivery window</option>
+            </select>
+          </div>
+          <div class="field" id="block-window-field" hidden>
+            <label for="block-window">Delivery window</label>
+            <select id="block-window">
+              <option value="1">09:00 – 11:00</option>
+              <option value="2">11:00 – 13:00</option>
+              <option value="3">13:00 – 15:00</option>
+              <option value="4">15:00 – 17:00</option>
+            </select>
+          </div>
+          <div class="field" id="block-capacity-field" hidden>
+            <label for="block-capacity">Capacity for this window</label>
+            <select id="block-capacity">
+              <option value="0">Closed — no deliveries</option>
+              <option value="1">1 delivery (reduced from 2)</option>
+              <option value="2">2 deliveries (normal)</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label for="block-note">Internal note (optional)</label>
+            <input id="block-note" maxlength="200" placeholder="e.g. Family day out, van servicing">
+            <p class="hint">Not shown to customers. It is included on the calendar block.</p>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:12px">Blocking does not cancel or delete paid orders. The app will warn you if the day has paid bookings.</p>
+      </div>
+      <div class="dialog-foot">
+        <button class="btn btn-outline btn-sm" type="button" data-block-close>Cancel</button>
+        <button class="btn btn-sm" type="submit" id="block-submit">Save block</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/admin.js" type="module"></script>
+</body>
+</html>
