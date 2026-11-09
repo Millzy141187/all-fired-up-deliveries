@@ -25,6 +25,7 @@ const state = {
   currentOrderId: null,
   currentEmailFrom: "",
   currentOrderItems: [],
+  reminders: null,
   blockAck: false,
 };
 
@@ -161,7 +162,31 @@ function bindEvents() {
     button.addEventListener("click", () => showTab(button.dataset.tab));
   });
 
-  $("#refresh-orders").addEventListener("click", () => { loadStats(); loadOrders(); });
+  $("#refresh-orders").addEventListener("click", () => { loadStats(); loadOrders(); loadReminders(); });
+
+  $("#send-reminders").addEventListener("click", async () => {
+    const button = $("#send-reminders");
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = "Sending…";
+    try {
+      const result = await api("/api/admin/reminders/run", { method: "POST" });
+      if (result.failed) {
+        toast(`${result.sent} sent, ${result.failed} failed — ${result.errors[0] || "check Google email"}.`, "error");
+      } else if (result.sent) {
+        toast(`${result.sent} reminder ${result.sent === 1 ? "email" : "emails"} sent.`);
+      } else {
+        toast(result.errors[0] || "No reminders were waiting to send.", result.errors.length ? "error" : "");
+      }
+      await loadReminders();
+      loadOrders();
+    } catch (err) {
+      toast(err.message || "Reminders could not be sent.", "error");
+    } finally {
+      button.textContent = label;
+      if (state.reminders?.emailReady !== false) button.disabled = false;
+    }
+  });
 
   let searchTimer;
   $("#order-search").addEventListener("input", () => {
@@ -339,7 +364,7 @@ function showTab(tab) {
   });
   history.replaceState(null, "", `/admin#${tab}`);
 
-  if (tab === "orders") { loadStats(); loadOrders(); }
+  if (tab === "orders") { loadStats(); loadOrders(); loadReminders(); }
   if (tab === "calendar") loadCalendar(state.calMonth || state.today.slice(0, 7));
   if (tab === "availability") loadAvailability();
   if (tab === "setup") loadSetup();
@@ -356,6 +381,28 @@ async function loadStats() {
     $("#stat-issues").textContent = stats.calendarIssues;
     $("#stat-issues-card").hidden = !stats.calendarConnected;
   } catch { /* the list below will surface errors */ }
+}
+
+async function loadReminders() {
+  const status = $("#reminder-status");
+  const button = $("#send-reminders");
+  if (!status) return;
+  try {
+    const data = await api("/api/admin/reminders");
+    state.reminders = data;
+    if (button) button.disabled = !data.emailReady;
+    if (!data.emailReady) {
+      status.textContent = "Google email is not connected, so reminders cannot send.";
+    } else if (!data.deliveriesToday) {
+      status.textContent = `No paid deliveries today. Automatic check at ${data.autoTime} on delivery days.`;
+    } else {
+      const parts = [`${data.sentToday} of ${data.deliveriesToday} sent today`];
+      if (data.pending) parts.push(`${data.pending} waiting`);
+      status.textContent = `${parts.join(" · ")}. Automatic check at ${data.autoTime}${data.autoRanToday ? " · ran today" : ""}.${data.lastError ? ` Last error: ${data.lastError}` : ""}`;
+    }
+  } catch (err) {
+    status.textContent = err.message || "Reminder status could not be loaded.";
+  }
 }
 
 async function loadOrders() {

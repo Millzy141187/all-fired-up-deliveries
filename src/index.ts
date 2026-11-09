@@ -67,11 +67,26 @@ import {
   type CheckoutSession,
 } from "./stripe";
 import { addDays, formatLongDate, todayLondon, windowById } from "./time";
+import {
+  maybeSendMorningReminders,
+  remindersOverview,
+  sendDeliveryReminders,
+} from "./reminders";
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", async (c, next) => {
   await ensureDb(c.env.DB);
+  // Automatic morning reminders ride on ordinary traffic: Sites has no cron
+  // trigger, so the first request after 07:30 London runs them. It is
+  // idempotent, and a failure must never break the request.
+  if (c.req.method === "GET") {
+    c.executionCtx.waitUntil(
+      maybeSendMorningReminders(c.env).catch(() => {
+        // Reminders are best-effort.
+      }),
+    );
+  }
   await next();
 });
 
@@ -437,6 +452,13 @@ adminApi.get("/stats", async (c) => {
     calendarIssues: issues?.n ?? 0,
     calendarConnected,
   });
+});
+
+adminApi.get("/reminders", async (c) => c.json(await remindersOverview(c.env)));
+
+adminApi.post("/reminders/run", async (c) => {
+  const result = await sendDeliveryReminders(c.env, todayLondon(), { retryFailed: true });
+  return c.json(result);
 });
 
 adminApi.get("/orders", async (c) => {

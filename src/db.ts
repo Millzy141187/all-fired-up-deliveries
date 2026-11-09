@@ -307,6 +307,17 @@ CREATE TABLE IF NOT EXISTS order_emails (
   sent_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_emails_order ON order_emails(order_id);
+CREATE TABLE IF NOT EXISTS delivery_reminders (
+  order_id TEXT NOT NULL,
+  delivery_date TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'sending',
+  gmail_id TEXT NOT NULL DEFAULT '',
+  sent_at TEXT,
+  attempted_at TEXT NOT NULL,
+  error TEXT,
+  PRIMARY KEY (order_id, delivery_date)
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_date ON delivery_reminders(delivery_date, state);
 CREATE TABLE IF NOT EXISTS blocks (
   id TEXT PRIMARY KEY,
   date TEXT NOT NULL,
@@ -360,7 +371,7 @@ async function initialise(db: D1Database): Promise<void> {
     const ready = await db
       .prepare("SELECT value FROM settings WHERE key = 'schema_version'")
       .first<{ value: string }>();
-    if (ready?.value === "2") return;
+    if (ready?.value === "3") return;
   } catch {
     // A fresh D1 database has no settings table yet.
   }
@@ -426,7 +437,7 @@ async function initialise(db: D1Database): Promise<void> {
   }
 
   // Written last so a partially completed first boot is retried.
-  await setSetting(db, "schema_version", "2");
+  await setSetting(db, "schema_version", "3");
 }
 
 export async function getSetting(db: D1Database, key: string): Promise<string | null> {
