@@ -1,0 +1,31 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "",
+  "buildCommand": "",
+  "outputDirectory": "public",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://site-32e273850fa2412d9a2ebd9da626518e.freebuff.page/api/:path*"
+    },
+    { "source": "/confirmation", "destination": "/confirmation.html" },
+    { "source": "/demo-pay", "destination": "/demo-pay.html" }
+  ],
+  "redirects": [
+    {
+      "source": "/admin",
+      "destination": "https://site-32e273850fa2412d9a2ebd9da626518e.freebuff.page/admin",
+      "permanent": false
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "https://site-32e273850fa2412d9a2ebd9da626518e.freebuff.page/admin/:path*",
+      "permanent": false
+    },
+    {
+      "source": "/admin.html",
+      "destination": "https://site-32e273850fa2412d9a2ebd9da626518e.freebuff.page/admin",
+      "permanent": false
+    }
+  ]
+}
