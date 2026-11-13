@@ -9,6 +9,8 @@ export interface DeliveryZone {
   dayLabel: string;
   weekdays: number[];
   districts: string[];
+  /** Approximate driving distance from the yard, not a straight line. */
+  roadMiles: number;
 }
 
 function districtRange(prefix: string, from: number, to: number): string[] {
@@ -22,6 +24,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     dayLabel: "Monday",
     weekdays: [1],
     districts: ["NR17", "NR19", "NR20"],
+    roadMiles: 5,
   },
   {
     id: "norwich",
@@ -29,6 +32,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     dayLabel: "Tuesday",
     weekdays: [2],
     districts: districtRange("NR", 1, 8),
+    roadMiles: 19,
   },
   {
     id: "ipswich",
@@ -36,6 +40,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     dayLabel: "Wednesday",
     weekdays: [3],
     districts: districtRange("IP", 1, 7),
+    roadMiles: 56,
   },
   {
     id: "kings-lynn",
@@ -43,6 +48,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     dayLabel: "Thursday",
     weekdays: [4],
     districts: districtRange("PE", 30, 38),
+    roadMiles: 25,
   },
   {
     id: "cambridge",
@@ -50,6 +56,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     dayLabel: "Friday",
     weekdays: [5],
     districts: districtRange("CB", 1, 5),
+    roadMiles: 58,
   },
 ];
 

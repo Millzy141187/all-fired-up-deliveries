@@ -22,7 +22,7 @@ export const BUSINESS = {
   phone: "0000 000 000",
   email: "orders@allfiredup.co.uk",
   address: "Foresters Lodge, Bradenham Lane, Scarning, Dereham, Norfolk NR19 2LA",
-  radiusMiles: 20,
+  maxRoadMiles: 60,
   deliveryPrefixes: ["NR", "IP", "PE", "CB"],
   defaultCalendarName: "All Fired Up Deliveries",
   // Created ahead of launch in the connected Google account. The OAuth flow
@@ -137,7 +137,7 @@ export const DEFAULT_PRODUCTS = [
     requires_firewood: 0,
     sort: 1,
     active: 1,
-    note: "Dumpy bags are delivered within 15 miles of our yard.",
+    note: "Dumpy bags are delivered within 15 road miles of our yard.",
   },
   {
     id: "loose-load-2m3",
@@ -398,7 +398,7 @@ async function initialise(db: D1Database): Promise<void> {
     const ready = await db
       .prepare("SELECT value FROM settings WHERE key = 'schema_version'")
       .first<{ value: string }>();
-    if (ready?.value === "4") return;
+    if (ready?.value === "5") return;
   } catch {
     // A fresh D1 database has no settings table yet.
   }
@@ -425,6 +425,12 @@ async function initialise(db: D1Database): Promise<void> {
       // Column already exists.
     }
   }
+
+  await db
+    .prepare(
+      "UPDATE products SET note = 'Dumpy bags are delivered within 15 road miles of our yard.' WHERE id = 'large-dumpy-bag'",
+    )
+    .run();
 
   await db
     .prepare(
@@ -572,7 +578,7 @@ async function initialise(db: D1Database): Promise<void> {
   if (capacityStatements.length) await db.batch(capacityStatements);
 
   // Written last so a partially completed first boot is retried.
-  await setSetting(db, "schema_version", "4");
+  await setSetting(db, "schema_version", "5");
 }
 
 export async function getSetting(db: D1Database, key: string): Promise<string | null> {

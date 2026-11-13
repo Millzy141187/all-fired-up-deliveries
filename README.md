@@ -20,7 +20,8 @@ Prices are clearly marked test prices.
 - Postcode-based delivery rounds: Monday Dereham & Swaffham (NR17, NR19–20),
   Tuesday Norwich (NR1–8), Wednesday Ipswich (IP1–7), Thursday King's Lynn
   (PE30–38), Friday Cambridge (CB1–5). The date picker only shows the customer's
-  own round days.
+  own round days. The area is described in road miles from the yard (up to about
+  60), not a straight-line radius.
 - Five truck spaces per day, weighted by product volume, with a morning
   (09:00–13:00) or afternoon (13:00–17:00) promise and 24-hour notice.
 - 15-minute truck-space hold while the customer pays.
@@ -125,6 +126,7 @@ Blocks create a corresponding **“Blocked — no deliveries”** calendar event
 | --- | --- |
 | Delivery days | Monday–Friday, one area round per weekday |
 | Rounds | Dereham & Swaffham Mon · Norwich Tue · Ipswich Wed · King's Lynn Thu · Cambridge Fri |
+| Delivery area | Up to about 60 road miles from the yard (Dereham 5 · Norwich 19 · King's Lynn 25 · Ipswich 56 · Cambridge 58) |
 | Promise | Morning 09:00–13:00 or afternoon 13:00–17:00 |
 | Truck capacity | 5 dumpy-bag equivalents per day |
 | Product space | Dumpy bag 1 · 20 nets 1 · 2m³ loose 3 · 3m³ loose 4.5 · kindling 0.1 · firelighters 0.05 · coal 0.25 |

@@ -540,7 +540,7 @@ function showAreaMessage(postcode, markError) {
     return;
   }
   el.className = "area-message ok";
-  el.textContent = `Good news — ${zone.name} is on our ${zone.dayLabel} round. You will choose a morning or afternoon delivery for that day.`;
+  el.textContent = `Good news — ${zone.name} is on our ${zone.dayLabel} round, about ${zone.roadMiles} road miles from the yard. You will choose a morning or afternoon delivery for that day.`;
   setFieldError("postcode", "");
 }
 
