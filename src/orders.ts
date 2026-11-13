@@ -235,6 +235,7 @@ export async function buildReservation(
     public_token: token,
     status: "new",
     payment_status: "unpaid",
+    payment_method: "card",
     customer_name: name,
     email,
     phone,
@@ -350,6 +351,7 @@ export interface PublicOrder {
   ref: string;
   status: string;
   paymentStatus: string;
+  paymentMethod: string;
   customerName: string;
   email: string;
   phone: string;
@@ -375,6 +377,7 @@ export async function toPublicOrder(db: D1Database, order: OrderRow): Promise<Pu
     ref: order.ref,
     status: order.status,
     paymentStatus: order.payment_status,
+    paymentMethod: order.payment_method,
     customerName: order.customer_name,
     email: order.email,
     phone: order.phone,
@@ -417,6 +420,7 @@ export async function startCheckout(
   origin: string,
 ): Promise<{ url: string; demo: boolean }> {
   if (order.payment_status === "paid") throw new ValidationError("This order has already been paid.", 409);
+  if (order.payment_method === "cash") throw new ValidationError("This order is set to cash on delivery.", 409);
   if (order.reservation_expires_at && order.reservation_expires_at <= Date.now()) {
     throw new ValidationError("Your 15-minute slot hold has expired. Please choose a slot again.", 409, "EXPIRED");
   }
@@ -468,8 +472,10 @@ export async function finalizePaidOrder(
   let order = await getOrderById(db, orderId);
   if (!order) throw new ValidationError("Order not found.", 404);
   if (order.payment_status === "paid") return order;
+  if (order.payment_method === "cash") {
+    throw new ValidationError("This order is set to cash on delivery.", 409);
+  }
 
-  const items = await orderItems(db, order.id);
   const nowIso = new Date().toISOString();
   let calendarError: string | null = null;
 
@@ -510,6 +516,12 @@ export async function finalizePaidOrder(
     return (await getOrderById(db, order.id))!;
   }
 
+  return attachCalendarEvent(env, db, order);
+}
+
+async function attachCalendarEvent(env: Env, db: D1Database, order: OrderRow): Promise<OrderRow> {
+  if (order.calendar_event_id) return order;
+  const items = await orderItems(db, order.id);
   try {
     const cfg = await googleConfig(env, db);
     if (!cfg.refreshToken) {
@@ -530,8 +542,85 @@ export async function finalizePaidOrder(
       .bind(message, new Date().toISOString(), order.id)
       .run();
   }
-
   return (await getOrderById(db, order.id))!;
+}
+
+export async function finalizeCashOrder(env: Env, db: D1Database, orderId: string): Promise<OrderRow> {
+  let order = await getOrderById(db, orderId);
+  if (!order) throw new ValidationError("Order not found.", 404);
+  if (order.payment_status === "paid") throw new ValidationError("This order has already been paid.", 409);
+  if (["cancelled", "refunded", "expired"].includes(order.status)) {
+    throw new ValidationError("This order is no longer active.", 409);
+  }
+  if (order.reservation_expires_at && order.reservation_expires_at <= Date.now()) {
+    throw new ValidationError("Your 15-minute slot hold has expired. Please choose a slot again.", 409, "EXPIRED");
+  }
+
+  if (!(await orderHasCapacity(db, order.id))) {
+    const spaceOk = await acquireCapacity(
+      db,
+      order.delivery_date,
+      order.space_units || 0,
+      order.id,
+      null,
+    );
+    if (!spaceOk) {
+      throw new ValidationError("That day's truck has just filled up. Please choose another date.", 409, "SLOT_FULL");
+    }
+  }
+  await makeOrderLocksPermanent(db, order.id);
+
+  const nowIso = new Date().toISOString();
+  await db
+    .prepare(
+      `UPDATE orders SET payment_method = 'cash', status = 'confirmed', reservation_expires_at = NULL, updated_at = ?
+       WHERE id = ? AND payment_status != 'paid'`,
+    )
+    .bind(nowIso, order.id)
+    .run();
+  order = (await getOrderById(db, order.id))!;
+  return attachCalendarEvent(env, db, order);
+}
+
+export async function markCashPaid(db: D1Database, order: OrderRow): Promise<OrderRow> {
+  if (order.payment_method !== "cash") {
+    throw new ValidationError("Only cash orders can be marked paid here.", 400);
+  }
+  if (order.payment_status === "paid") return order;
+  const nowIso = new Date().toISOString();
+  await db
+    .prepare(
+      "UPDATE orders SET payment_status = 'paid', paid_at = COALESCE(paid_at, ?), updated_at = ? WHERE id = ?",
+    )
+    .bind(nowIso, nowIso, order.id)
+    .run();
+  return (await getOrderById(db, order.id))!;
+}
+
+export async function deleteOrderRecord(
+  env: Env,
+  db: D1Database,
+  order: OrderRow,
+): Promise<string | undefined> {
+  let warning: string | undefined;
+  if (order.calendar_event_id) {
+    try {
+      await deleteCalendarEvent(env, db, order.calendar_event_id);
+    } catch (err) {
+      warning =
+        err instanceof Error
+          ? `Order deleted, but the Google Calendar event could not be removed: ${err.message}`
+          : "Order deleted, but the Google Calendar event could not be removed.";
+    }
+  }
+  await releaseOrderLocks(db, order.id);
+  await db.batch([
+    db.prepare("DELETE FROM delivery_reminders WHERE order_id = ?").bind(order.id),
+    db.prepare("DELETE FROM order_emails WHERE order_id = ?").bind(order.id),
+    db.prepare("DELETE FROM order_items WHERE order_id = ?").bind(order.id),
+    db.prepare("DELETE FROM orders WHERE id = ?").bind(order.id),
+  ]);
+  return warning;
 }
 
 export async function syncOrderFromStripe(

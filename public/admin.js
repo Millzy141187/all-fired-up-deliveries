@@ -33,6 +33,7 @@ const state = {
   blocks: [],
   calMonth: null,
   currentOrderId: null,
+  currentOrder: null,
   currentEmailFrom: "",
   currentOrderItems: [],
   reminders: null,
@@ -47,6 +48,15 @@ function esc(value) {
 
 function money(pence) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format((Number(pence) || 0) / 100);
+}
+
+function paymentBadge(order) {
+  if (order.payment_method === "cash") {
+    if (order.payment_status === "paid") return `<span class="badge paid">Cash paid</span>`;
+    if (order.payment_status === "refunded") return `<span class="badge refunded">Cash refunded</span>`;
+    return `<span class="badge unpaid">Cash due</span>`;
+  }
+  return `<span class="badge ${esc(order.payment_status)}">${esc(order.payment_status)}</span>`;
 }
 
 function dateShort(dateStr) {
@@ -253,6 +263,23 @@ function bindEvents() {
   });
 
   $("#order-body").addEventListener("click", async (event) => {
+    const cashButton = event.target.closest("[data-cash-paid]");
+    if (cashButton) {
+      if (!confirm(`Mark ${money(state.currentOrder?.total_pence || 0)} cash as received?`)) return;
+      cashButton.disabled = true;
+      try {
+        await api(`/api/admin/orders/${state.currentOrderId}/cash-paid`, { method: "POST" });
+        toast("Cash payment recorded.");
+        await openOrder(state.currentOrderId, false);
+        loadOrders();
+        loadStats();
+      } catch (err) {
+        toast(err.message || "The cash payment could not be recorded.", "error");
+        cashButton.disabled = false;
+      }
+      return;
+    }
+
     const statusButton = event.target.closest("[data-set-status]");
     if (!statusButton) return;
     const status = statusButton.dataset.setStatus;
@@ -300,6 +327,35 @@ function bindEvents() {
     } finally {
       button.disabled = false;
       button.textContent = "Retry calendar sync";
+    }
+  });
+
+  $("#order-delete").addEventListener("click", async () => {
+    if (!state.currentOrderId) return;
+    const paid = state.currentOrder?.payment_status === "paid";
+    const message = paid
+      ? "This order is marked PAID. Deleting it permanently removes the order, its items, truck-space hold and calendar event. Continue?"
+      : "Delete this order permanently? This removes the order, its items, truck-space hold and calendar event. This cannot be undone.";
+    if (!confirm(message)) return;
+    const button = $("#order-delete");
+    button.disabled = true;
+    button.textContent = "Deleting…";
+    try {
+      const result = await api(`/api/admin/orders/${state.currentOrderId}`, { method: "DELETE" });
+      toast(result.warning || "Order deleted.", result.warning ? "error" : "");
+      $("#order-dialog").close();
+      state.currentOrderId = null;
+      state.currentOrder = null;
+      loadOrders();
+      loadStats();
+      loadReminders();
+      if (state.calMonth) loadCalendar(state.calMonth);
+      loadAvailability();
+    } catch (err) {
+      toast(err.message || "The order could not be deleted.", "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Delete order";
     }
   });
 
@@ -403,7 +459,7 @@ async function loadReminders() {
     if (!data.emailReady) {
       status.textContent = "Google email is not connected, so reminders cannot send.";
     } else if (!data.deliveriesToday) {
-      status.textContent = `No paid deliveries today. Automatic check at ${data.autoTime} on delivery days.`;
+      status.textContent = `No deliveries today. Automatic check at ${data.autoTime} on delivery days.`;
     } else {
       const parts = [`${data.sentToday} of ${data.deliveriesToday} sent today`];
       if (data.pending) parts.push(`${data.pending} waiting`);
@@ -453,7 +509,7 @@ function renderOrders(orders) {
       </td>
       <td style="max-width:220px"><div class="sub">${esc(order.itemsSummary || "—")}</div></td>
       <td class="money">${money(order.total_pence)}</td>
-      <td><span class="badge ${esc(order.payment_status)}">${esc(order.payment_status)}</span></td>
+      <td>${paymentBadge(order)}</td>
       <td><span class="badge ${esc(order.status)}">${esc(STATUS_LABELS[order.status] || order.status)}</span></td>
     </tr>`).join("");
 }
@@ -462,6 +518,7 @@ async function openOrder(id, show = true) {
   try {
     const data = await api(`/api/admin/orders/${id}`);
     state.currentOrderId = id;
+    state.currentOrder = data.order;
     renderOrder(data);
     if (show) $("#order-dialog").showModal();
   } catch (err) {
@@ -505,6 +562,7 @@ function emailTemplate(order, items) {
       `Address: ${address}`,
       `Items: ${contents || "Firewood order"}`,
       `Total: ${money(order.total_pence)}`,
+      `Payment: ${order.payment_method === "cash" ? (order.payment_status === "paid" ? "Cash received" : "Cash on delivery") : "Card (Stripe test)"}`,
       "",
       "If anything needs changing, just reply to this email or give us a call on 0000 000 000.",
       "",
@@ -594,28 +652,30 @@ async function sendOrderEmail() {
 
 function renderOrder(data) {
   const order = data.order;
+  const cash = order.payment_method === "cash";
   const items = data.items || [];
   const history = data.customerHistory || {};
+  state.currentOrder = order;
   state.currentOrderItems = items;
   state.currentEmailFrom = (data.email && data.email.from) || "";
   const facts = `
     <div class="order-facts">
       <div><small>Delivery</small><strong>${esc(deliveryCountdown(order.delivery_date))}</strong><span>${dateShort(order.delivery_date)}${order.window_label ? ` · ${esc(order.window_label)}` : ""}</span></div>
-      <div><small>Order total</small><strong>${money(order.total_pence)}</strong><span><span class="badge ${esc(order.payment_status)}">${esc(order.payment_status)}</span></span></div>
+      <div><small>Order total</small><strong>${money(order.total_pence)}</strong><span>${paymentBadge(order)}</span></div>
       <div><small>Placed</small><strong>${dateShort(order.created_at.slice(0, 10))}</strong><span>${esc(dateTimeLabel(order.created_at).split(", ").slice(-1)[0])}</span></div>
       <div><small>Customer history</small><strong>${history.paidOrders ? `${history.paidOrders} paid ${history.paidOrders === 1 ? "order" : "orders"}` : "First order"}</strong><span>${history.lastDelivery ? `Last ${dateShort(history.lastDelivery)}` : "No earlier deliveries"}</span></div>
     </div>`;
   $("#order-title").textContent = order.ref;
   $("#order-subtitle").textContent = `${dateLong(order.delivery_date)}${order.window_label ? ` · ${order.window_label}` : ""}${order.is_sample ? " · sample order" : ""}`;
-  $("#order-calendar").hidden = !(order.payment_status === "paid" && !order.calendar_event_id);
+  $("#order-calendar").hidden = !((order.payment_status === "paid" || cash) && !order.calendar_event_id);
 
   const calendar = order.calendar_event_id
     ? `<p><span class="badge delivered">In calendar</span></p>
        <p style="font-size:.78rem;color:var(--muted);margin-top:6px">${esc(data.calendarName)}<br>Event ${esc(order.calendar_event_id)}</p>
        ${order.calendar_event_link ? `<p style="margin-top:6px"><a href="${esc(order.calendar_event_link)}" target="_blank" rel="noopener">Open in Google Calendar</a></p>` : ""}`
-    : order.payment_status === "paid"
+    : order.payment_status === "paid" || cash
       ? `<p><span class="badge unpaid">Not synced</span></p>
-         ${order.calendar_error ? `<div class="issue">${esc(order.calendar_error)}</div>` : `<p style="font-size:.78rem;color:var(--muted);margin-top:6px">No calendar event yet. Add Stripe or Google settings, then retry.</p>`}`
+         ${order.calendar_error ? `<div class="issue">${esc(order.calendar_error)}</div>` : `<p style="font-size:.78rem;color:var(--muted);margin-top:6px">No calendar event yet. Add Google settings, then retry.</p>`}`
       : `<p style="font-size:.82rem;color:var(--muted)">The calendar event is created only after a confirmed payment.</p>`;
 
   $("#order-body").innerHTML = `
@@ -653,10 +713,15 @@ function renderOrder(data) {
     <div class="review-grid" style="margin-top:12px">
       <div class="detail-block">
         <h4>Payment</h4>
-        <p><span class="badge ${esc(order.payment_status)}">${esc(order.payment_status)}</span> <strong>${money(order.total_pence)}</strong></p>
-        <p style="font-size:.78rem;color:var(--muted);margin-top:6px">Stripe test mode · order ${esc(order.ref)}</p>
-        ${order.paid_at ? `<p style="font-size:.78rem;color:var(--muted)">Paid ${esc(dateTimeLabel(order.paid_at))}</p>` : `<p style="font-size:.78rem;color:var(--muted)">No payment received yet.</p>`}
-        ${order.stripe_payment_intent ? `<p class="mono" style="font-size:.72rem;color:var(--muted);overflow-wrap:anywhere">${esc(order.stripe_payment_intent)}</p>` : ""}
+        <p>${paymentBadge(order)} <strong>${money(order.total_pence)}</strong></p>
+        <p style="font-size:.78rem;color:var(--muted);margin-top:6px">${cash ? "Cash on delivery" : "Card · Stripe test mode"} · order ${esc(order.ref)}</p>
+        ${order.paid_at
+          ? `<p style="font-size:.78rem;color:var(--muted)">${cash ? "Cash received" : "Paid"} ${esc(dateTimeLabel(order.paid_at))}</p>`
+          : `<p style="font-size:.78rem;color:var(--muted)">${cash ? "Cash to collect on delivery." : "No payment received yet."}</p>`}
+        ${cash && order.payment_status === "unpaid"
+          ? `<button class="btn btn-outline btn-sm" type="button" data-cash-paid>Mark cash paid</button>`
+          : ""}
+        ${!cash && order.stripe_payment_intent ? `<p class="mono" style="font-size:.72rem;color:var(--muted);overflow-wrap:anywhere">${esc(order.stripe_payment_intent)}</p>` : ""}
       </div>
       <div class="detail-block">
         <h4>Google Calendar</h4>

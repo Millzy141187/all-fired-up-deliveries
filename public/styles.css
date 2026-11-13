@@ -281,6 +281,8 @@ p { margin: 0; }
 .day-head .day-meta.full { color: var(--red); font-weight: 700; }
 .day-head-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .badge.next { background: var(--green-soft); color: #245032; }
+.btn-danger { color: var(--red); border-color: #e3b6ae; }
+.btn-danger:hover { background: var(--red-soft); border-color: var(--red); }
 .slot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 11px; }
 .slot {
   border: 1.5px solid #d8c8b1; background: #fffefa; border-radius: 9px; padding: 9px 10px;

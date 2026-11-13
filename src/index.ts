@@ -28,6 +28,8 @@ import {
 import {
   buildReservation,
   changeOrderStatus,
+  deleteOrderRecord,
+  finalizeCashOrder,
   getOrderByRef,
   getOrderForCustomer,
   getOrderById,
@@ -38,6 +40,7 @@ import {
   syncOrderFromStripe,
   toPublicOrder,
   finalizePaidOrder,
+  markCashPaid,
   handleStripeEvent,
   ValidationError,
 } from "./orders";
@@ -324,6 +327,13 @@ app.get("/api/orders/:ref", async (c) => {
   return c.json({ order: await toPublicOrder(c.env.DB, order) });
 });
 
+app.post("/api/orders/:ref/cash", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const order = await getOrderForCustomer(c.env.DB, c.req.param("ref"), String(body.token || ""));
+  const updated = await finalizeCashOrder(c.env, c.env.DB, order.id);
+  return c.json({ ok: true, order: await toPublicOrder(c.env.DB, updated) });
+});
+
 app.post("/api/orders/:ref/sync", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const order = await getOrderForCustomer(c.env.DB, c.req.param("ref"), String(body.token || ""));
@@ -435,7 +445,7 @@ adminApi.get("/stats", async (c) => {
   const calendarConnected = Boolean(await getSetting(c.env.DB, "google_refresh_token"));
   const [upcoming, todays, revenue, issues] = await Promise.all([
     c.env.DB.prepare(
-      "SELECT COUNT(*) AS n FROM orders WHERE payment_status = 'paid' AND status NOT IN ('delivered','cancelled','refunded','expired') AND delivery_date >= ?",
+      "SELECT COUNT(*) AS n FROM orders WHERE (payment_status = 'paid' OR payment_method = 'cash') AND status NOT IN ('delivered','cancelled','refunded','expired') AND delivery_date >= ?",
     )
       .bind(today)
       .first<{ n: number }>(),
@@ -445,13 +455,13 @@ adminApi.get("/stats", async (c) => {
       .bind(today)
       .first<{ n: number }>(),
     c.env.DB.prepare(
-      "SELECT COALESCE(SUM(total_pence),0) AS n FROM orders WHERE payment_status = 'paid' AND status NOT IN ('cancelled','refunded','expired') AND delivery_date >= ?",
+      "SELECT COALESCE(SUM(total_pence),0) AS n FROM orders WHERE (payment_status = 'paid' OR payment_method = 'cash') AND status NOT IN ('cancelled','refunded','expired') AND delivery_date >= ?",
     )
       .bind(today)
       .first<{ n: number }>(),
     calendarConnected
       ? c.env.DB.prepare(
-          "SELECT COUNT(*) AS n FROM orders WHERE payment_status = 'paid' AND is_sample = 0 AND calendar_event_id IS NULL AND status NOT IN ('cancelled','refunded','expired')",
+          "SELECT COUNT(*) AS n FROM orders WHERE (payment_status = 'paid' OR payment_method = 'cash') AND is_sample = 0 AND calendar_event_id IS NULL AND status NOT IN ('cancelled','refunded','expired')",
         ).first<{ n: number }>()
       : Promise.resolve({ n: 0 }),
   ]);
@@ -538,6 +548,20 @@ adminApi.get("/orders/:id", async (c) => {
     },
     customerHistory: { paidOrders: history?.n ?? 0, lastDelivery: history?.last ?? null },
   });
+});
+
+adminApi.delete("/orders/:id", async (c) => {
+  const order = await getOrderById(c.env.DB, c.req.param("id"));
+  if (!order) return c.json({ error: "Order not found." }, 404);
+  const warning = await deleteOrderRecord(c.env, c.env.DB, order);
+  return c.json({ ok: true, warning });
+});
+
+adminApi.post("/orders/:id/cash-paid", async (c) => {
+  const order = await getOrderById(c.env.DB, c.req.param("id"));
+  if (!order) return c.json({ error: "Order not found." }, 404);
+  const updated = await markCashPaid(c.env.DB, order);
+  return c.json({ order: updated });
 });
 
 adminApi.patch("/orders/:id", async (c) => {

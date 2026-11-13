@@ -69,6 +69,7 @@ export interface OrderRow {
   public_token: string;
   status: string;
   payment_status: string;
+  payment_method: string;
   customer_name: string;
   email: string;
   phone: string;
@@ -273,6 +274,7 @@ CREATE TABLE IF NOT EXISTS orders (
   public_token TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'new',
   payment_status TEXT NOT NULL DEFAULT 'unpaid',
+  payment_method TEXT NOT NULL DEFAULT 'card',
   customer_name TEXT NOT NULL DEFAULT '',
   email TEXT NOT NULL DEFAULT '',
   phone TEXT NOT NULL DEFAULT '',
@@ -398,7 +400,7 @@ async function initialise(db: D1Database): Promise<void> {
     const ready = await db
       .prepare("SELECT value FROM settings WHERE key = 'schema_version'")
       .first<{ value: string }>();
-    if (ready?.value === "6") return;
+    if (ready?.value === "7") return;
   } catch {
     // A fresh D1 database has no settings table yet.
   }
@@ -417,6 +419,7 @@ async function initialise(db: D1Database): Promise<void> {
     "ALTER TABLE orders ADD COLUMN band TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE orders ADD COLUMN zone TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE orders ADD COLUMN space_units REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE orders ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'card'",
     "ALTER TABLE blocks ADD COLUMN band TEXT NOT NULL DEFAULT ''",
   ]) {
     try {
@@ -559,7 +562,7 @@ async function initialise(db: D1Database): Promise<void> {
     .prepare(
       `SELECT id, delivery_date, space_units FROM orders
        WHERE delivery_date >= ? AND status NOT IN ('cancelled','refunded','expired')
-         AND (payment_status = 'paid' OR (reservation_expires_at IS NOT NULL AND reservation_expires_at > ?))`,
+         AND (payment_status = 'paid' OR payment_method = 'cash' OR (reservation_expires_at IS NOT NULL AND reservation_expires_at > ?))`,
     )
     .bind(todayLondon(), Date.now())
     .all<{ id: string; delivery_date: string; space_units: number }>();
@@ -577,7 +580,7 @@ async function initialise(db: D1Database): Promise<void> {
   if (capacityStatements.length) await db.batch(capacityStatements);
 
   // Written last so a partially completed first boot is retried.
-  await setSetting(db, "schema_version", "6");
+  await setSetting(db, "schema_version", "7");
 }
 
 export async function getSetting(db: D1Database, key: string): Promise<string | null> {

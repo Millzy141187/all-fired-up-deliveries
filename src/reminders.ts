@@ -54,6 +54,9 @@ function reminderEmail(order: OrderRow, items: { name: string; qty: number }[]) 
       `Address: ${address}`,
       `Items: ${contents || "Firewood order"}`,
       `Total: ${formatMoney(order.total_pence)}`,
+      ...(order.payment_method === "cash" && order.payment_status !== "paid"
+        ? [`Payment: ${formatMoney(order.total_pence)} cash on delivery`]
+        : []),
       "",
       "If anything has changed, just reply to this email or call 0000 000 000 and we will sort it out.",
       "",
@@ -65,14 +68,14 @@ function reminderEmail(order: OrderRow, items: { name: string; qty: number }[]) 
 
 const DUE_ORDERS = `SELECT o.* FROM orders o
   LEFT JOIN delivery_reminders r ON r.order_id = o.id AND r.delivery_date = o.delivery_date
-  WHERE o.delivery_date = ? AND o.payment_status = 'paid' AND o.is_sample = 0
+  WHERE o.delivery_date = ? AND (o.payment_status = 'paid' OR o.payment_method = 'cash') AND o.is_sample = 0
     AND o.status NOT IN ('cancelled','refunded','delivered','expired')
     AND r.order_id IS NULL
   ORDER BY o.window_id, o.created_at`;
 
 const PENDING_COUNT = `SELECT COUNT(*) AS n FROM orders o
   LEFT JOIN delivery_reminders r ON r.order_id = o.id AND r.delivery_date = o.delivery_date
-  WHERE o.delivery_date = ? AND o.payment_status = 'paid' AND o.is_sample = 0
+  WHERE o.delivery_date = ? AND (o.payment_status = 'paid' OR o.payment_method = 'cash') AND o.is_sample = 0
     AND o.status NOT IN ('cancelled','refunded','delivered','expired')
     AND r.order_id IS NULL`;
 
@@ -178,7 +181,7 @@ export async function remindersOverview(
   const [deliveries, sent, pending, ready, autoDate, lastError] = await Promise.all([
     db
       .prepare(
-        "SELECT COUNT(*) AS n FROM orders WHERE delivery_date = ? AND payment_status = 'paid' AND is_sample = 0 AND status NOT IN ('cancelled','refunded','delivered','expired')",
+        "SELECT COUNT(*) AS n FROM orders WHERE delivery_date = ? AND (payment_status = 'paid' OR payment_method = 'cash') AND is_sample = 0 AND status NOT IN ('cancelled','refunded','delivered','expired')",
       )
       .bind(date)
       .first<{ n: number }>(),

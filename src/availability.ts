@@ -77,7 +77,7 @@ export async function loadAvailabilityContext(
         `SELECT delivery_date, COALESCE(SUM(space_units), 0) AS units FROM orders
          WHERE delivery_date >= ? AND delivery_date <= ?
            AND status NOT IN ('cancelled','refunded','expired')
-           AND (payment_status = 'paid' OR (reservation_expires_at IS NOT NULL AND reservation_expires_at > ?))
+           AND (payment_status = 'paid' OR payment_method = 'cash' OR (reservation_expires_at IS NOT NULL AND reservation_expires_at > ?))
          GROUP BY delivery_date`,
       )
       .bind(fromDate, toDate, now)

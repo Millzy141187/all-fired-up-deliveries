@@ -48,28 +48,39 @@ function render(order) {
   $("#result-card").hidden = false;
 
   const paid = order.paymentStatus === "paid";
-  $("#result-icon").textContent = paid ? "✓" : "…";
-  $("#result-icon").style.background = paid ? "var(--green)" : "#b08a4a";
-  $("#result-title").textContent = paid ? "You're all fired up" : "Payment is confirming";
+  const cash = order.paymentMethod === "cash";
+  const cashDue = cash && !paid;
+  const confirmed = paid || cashDue;
+  $("#result-icon").textContent = confirmed ? (cashDue ? "£" : "✓") : "…";
+  $("#result-icon").style.background = confirmed && !cashDue ? "var(--green)" : "#b08a4a";
+  $("#result-title").textContent = paid
+    ? "You're all fired up"
+    : cashDue
+      ? "Order confirmed — pay cash on delivery"
+      : "Payment is confirming";
   $("#result-subtitle").textContent = paid
     ? `Thanks ${order.customerName.split(" ")[0]} — your delivery is booked.`
-    : "We are waiting for Stripe to confirm the test payment.";
+    : cashDue
+      ? `Thanks ${order.customerName.split(" ")[0]} — your delivery is booked. Please have ${money(order.total)} ready for the driver.`
+      : "We are waiting for Stripe to confirm the test payment.";
   $("#result-ref").textContent = order.ref;
 
   const calendarLine = order.calendarSynced
     ? `<div class="confirm-status ok">✓ Added to the <strong>All Fired Up Deliveries</strong> Google Calendar as a busy delivery.</div>`
     : order.calendarError
-      ? `<div class="confirm-status warn">Payment confirmed. The calendar entry is pending — the team can add it from the owner dashboard.</div>`
-      : `<div class="confirm-status warn">Payment confirmed. The calendar entry is being prepared.</div>`;
+      ? `<div class="confirm-status warn">${confirmed ? "Your delivery is booked." : "Payment confirmed."} The calendar entry is pending — the team can add it from the owner dashboard.</div>`
+      : `<div class="confirm-status warn">${confirmed ? "Your delivery is booked." : "Payment confirmed."} The calendar entry is being prepared.</div>`;
 
   const emailLine = `<div class="confirm-status warn" style="background:var(--cream);color:#6b5b46">Simulated confirmation email to <strong>${esc(order.email)}</strong>. No real email is sent in this test version.</div>`;
 
   $("#result-body").innerHTML = `
     <div class="notice info" style="margin-bottom:0">
-      <strong>Test order — no real payment was taken.</strong> This booking is stored separately as test data.
+      ${cashDue
+        ? `<strong>Cash on delivery.</strong> Please have ${money(order.total)} ready for the driver. This is a test order.`
+        : "<strong>Test order — no real payment was taken.</strong> This booking is stored separately as test data."}
     </div>
 
-    ${paid ? `
+    ${confirmed ? `
       <div class="confirm-slot">
         <div class="box"><small>Delivery date</small><strong>${longDate(order.deliveryDate)}</strong></div>
         <div class="box"><small>Delivery</small><strong>We'll text a time</strong></div>
@@ -89,7 +100,7 @@ function render(order) {
       <div class="totals">
         <div><span>Subtotal</span><span>${money(order.subtotal)}</span></div>
         <div><span>Delivery</span><span>${order.delivery === 0 ? "Free" : money(order.delivery)}</span></div>
-        <div class="grand"><span>Total — test payment</span><span>${money(order.total)}</span></div>
+        <div class="grand"><span>${cashDue ? "Total — pay cash on delivery" : "Total — test payment"}</span><span>${money(order.total)}</span></div>
       </div>
     </div>
 
@@ -101,7 +112,7 @@ function render(order) {
       </div>
       <div class="detail-block">
         <h4>Payment</h4>
-        <p>${paid ? "Paid with Stripe test mode" : "Awaiting confirmation"}</p>
+        <p>${cash ? (paid ? "Cash received" : `Cash on delivery — ${money(order.total)} due`) : paid ? "Paid with Stripe test mode" : "Awaiting confirmation"}</p>
         <p style="margin-top:7px;font-size:.78rem;color:var(--muted)">Reference ${esc(order.ref)}</p>
       </div>
     </div>
@@ -119,7 +130,7 @@ function render(order) {
     </p>
   `;
 
-  if (paid) {
+  if (paid || cashDue) {
     try { localStorage.removeItem("afu_draft_v2"); } catch { /* ignore */ }
   } else if (sessionId) {
     // The webhook may arrive shortly; refresh the order a few times.

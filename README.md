@@ -26,12 +26,14 @@ Prices are clearly marked test prices.
   with 24-hour notice. The arrival time is narrowed by text on the day.
 - 15-minute truck-space hold while the customer pays.
 - Stripe Checkout in test mode (or a clearly labelled demo checkout if Stripe is
-  not configured yet).
+  not configured yet), plus cash on delivery. Cash orders are confirmed without
+  Stripe and stay unpaid until the owner marks the cash received.
 - Confirmation page with order reference, payment state and calendar sync state.
 
 **Owner dashboard** (`/admin`)
 - Password-protected orders list with search (name, postcode, order ID, date),
-  status filter, detail drawer and status changes.
+  status filter, detail drawer, status changes and permanent order deletion
+  (removes the order, its truck-space hold and its calendar event).
 - Calendar-style month view plus a per-day delivery schedule.
 - Availability manager: close whole delivery days, see truck space used per
   day, add an internal note, remove blocks.
@@ -48,9 +50,10 @@ Prices are clearly marked test prices.
 - Unavailable when the truck is full, the round is closed, the postcode does not
   match that weekday, the date is inside the 24-hour notice period, reserved by
   someone else, or busy in the connected Google Calendar.
-- Calendar events are created only after Stripe confirms payment — via webhook,
+- Calendar events are created after Stripe confirms card payment — via webhook,
   or by server-side Stripe session verification on the confirmation page if the
-  webhook is delayed or unavailable locally.
+  webhook is delayed or unavailable locally — and immediately when a cash order
+  is confirmed.
 
 ---
 
@@ -128,6 +131,7 @@ Blocks create a corresponding **“Blocked — no deliveries”** calendar event
 | Rounds | Dereham & Swaffham Mon · Norwich Tue (online) · Ipswich, King's Lynn and Cambridge are call-us only |
 | Delivery area | Within 20 road miles of the yard (Dereham 4 · Norwich 20) |
 | Booking | Delivery date only; arrival time texted on the day |
+| Payment | Card (Stripe test) or cash on delivery |
 | Truck capacity | 5 dumpy-bag equivalents per day |
 | Product space | Dumpy bag 1 · 20 nets 1 · 2m³ loose 3 · 3m³ loose 4.5 · kindling 0.1 · firelighters 0.05 · coal 0.25 |
 | Minimum notice | 24 hours |

@@ -335,7 +335,7 @@ const STEP_META = {
   order: { title: "Your order", subtitle: "Build your order, then choose your delivery day." },
   delivery: { title: "Delivery details", subtitle: "Tell us where the logs are going." },
   slot: { title: "Choose your delivery day", subtitle: "Your area has one weekday round. Choose the date that suits you." },
-  review: { title: "Review and pay", subtitle: "One last look before the test payment." },
+  review: { title: "Review and pay", subtitle: "Choose card or cash on delivery." },
 };
 
 function parseHash() {
@@ -828,21 +828,26 @@ function renderReviewStep(container) {
       </div>
 
       <div class="pay-banner">
-        <h3>Test payment only</h3>
-        <p>This uses Stripe Checkout in test mode. No real money is taken and no card details are stored by this app.</p>
+        <h3>How would you like to pay?</h3>
+        <p>Pay now by card through Stripe test mode, or pay the driver in cash when your logs arrive.</p>
         <span class="test-card">Test card: 4242 4242 4242 4242 · any future expiry · any CVC</span>
       </div>
 
       <div class="panel-actions">
         <button class="btn btn-outline" type="button" id="review-back">← Change slot</button>
-        <button class="btn btn-green" type="button" id="pay-now">
-          Pay ${money(order.total)} ${boot.stripe.configured ? "with Stripe" : "(demo)"} →
-        </button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-outline" type="button" id="pay-cash">
+            Pay ${money(order.total)} cash on delivery
+          </button>
+          <button class="btn btn-green" type="button" id="pay-now">
+            Pay ${money(order.total)} with card →
+          </button>
+        </div>
       </div>
       <p style="font-size:.73rem;color:var(--muted);margin-top:12px">
         ${boot.stripe.configured
-          ? "You will be redirected to Stripe's secure test checkout. For testing, use card 4242 4242 4242 4242."
-          : "Stripe test keys are not configured yet, so the demo checkout will be used. The order and calendar booking still work."}
+          ? "Card payments open Stripe's secure test checkout. For testing, use card 4242 4242 4242 4242. Cash is paid to the driver on delivery."
+          : "Stripe test keys are not configured, so card payments use the demo checkout. Cash on delivery works either way."}
       </p>
     </div>`;
 
@@ -869,8 +874,39 @@ function renderReviewStep(container) {
     } catch (err) {
       toast(err.message || "Checkout could not be started.", "error");
       button.disabled = false;
-      button.textContent = `Pay ${money(order.total)} →`;
+      button.textContent = `Pay ${money(order.total)} with card →`;
       if (err.code === "EXPIRED") {
+        state.reservation = null;
+        saveDraft();
+        navigate("slot");
+      }
+    } finally {
+      saving = false;
+    }
+  });
+
+  $("#pay-cash").addEventListener("click", async () => {
+    if (socketExpired()) return;
+    if (saving) return;
+    saving = true;
+    const button = $("#pay-cash");
+    button.disabled = true;
+    button.innerHTML = `<span class="spinner" style="border-top-color:#261a09"></span> Confirming cash order…`;
+    try {
+      await api(`/api/orders/${encodeURIComponent(reservation.ref)}/cash`, {
+        method: "POST",
+        body: { token: reservation.token },
+      });
+      try { localStorage.removeItem("afu_draft_v2"); } catch { /* ignore */ }
+      const ref = encodeURIComponent(reservation.ref);
+      const token = encodeURIComponent(reservation.token);
+      state.reservation = null;
+      window.location.href = `/confirmation?ref=${ref}&token=${token}`;
+    } catch (err) {
+      toast(err.message || "The cash order could not be confirmed.", "error");
+      button.disabled = false;
+      button.textContent = `Pay ${money(order.total)} cash on delivery`;
+      if (err.code === "EXPIRED" || err.code === "SLOT_FULL") {
         state.reservation = null;
         saveDraft();
         navigate("slot");
@@ -895,10 +931,12 @@ function startCountdown(expiresAt) {
     if (remaining <= 0) {
       el.className = "hold-timer expired";
       el.textContent = "Hold expired";
-      const pay = $("#pay-now");
-      if (pay) {
-        pay.disabled = true;
-        pay.textContent = "Slot hold expired";
+      for (const id of ["#pay-now", "#pay-cash"]) {
+        const pay = $(id);
+        if (pay) {
+          pay.disabled = true;
+          pay.textContent = "Slot hold expired";
+        }
       }
       clearInterval(countdownTimer);
       toast("Your 15-minute hold has expired. Please choose a delivery day again.", "error");
