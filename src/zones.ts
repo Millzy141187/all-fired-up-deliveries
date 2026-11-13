@@ -32,7 +32,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     dayLabel: "Tuesday",
     weekdays: [2],
     districts: districtRange("NR", 1, 8),
-    roadMiles: 19,
+    roadMiles: 20,
   },
   {
     id: "ipswich",
