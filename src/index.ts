@@ -23,7 +23,6 @@ import { newToken, randomHex, hashPassword, verifyPassword } from "./crypto";
 import {
   adminCalendarMonth,
   computeAvailability,
-  getSlotState,
   releaseOrderLocks,
 } from "./availability";
 import {

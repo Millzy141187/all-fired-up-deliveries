@@ -1,8 +1,9 @@
 # All Fired Up — firewood ordering & delivery test app
 
 A working prototype for the full customer journey: choose firewood, enter delivery
-details, select a real delivery slot, pay with **Stripe test mode**, and have the
-confirmed booking appear in the **All Fired Up Deliveries** Google Calendar.
+details, pick your area's weekday round and a morning or afternoon promise, pay
+with **Stripe test mode**, and have the confirmed booking appear in the
+**All Fired Up Deliveries** Google Calendar.
 
 This is original demonstration content. It does not copy the existing All Fired Up
 site's text, images or branding. Product artwork is original placeholder SVG.
@@ -16,10 +17,13 @@ Prices are clearly marked test prices.
 - Warm, responsive ordering flow (mobile-first) with placeholder product imagery.
 - Products modelled on the real range: large dumpy bag, 2m³ and 3m³ loose loads,
   20 nets, kindling, natural firelighters and smokeless coal.
-- Delivery details with NR / IP / PE / CB sample-area check.
-- Live delivery slot picker: Mon–Fri, four two-hour windows, 24-hour notice,
-  2 per window and 6 per day.
-- 15-minute slot hold while the customer pays.
+- Postcode-based delivery rounds: Monday Dereham & Swaffham (NR17, NR19–20),
+  Tuesday Norwich (NR1–8), Wednesday Ipswich (IP1–7), Thursday King's Lynn
+  (PE30–38), Friday Cambridge (CB1–5). The date picker only shows the customer's
+  own round days.
+- Five truck spaces per day, weighted by product volume, with a morning
+  (09:00–13:00) or afternoon (13:00–17:00) promise and 24-hour notice.
+- 15-minute truck-space hold while the customer pays.
 - Stripe Checkout in test mode (or a clearly labelled demo checkout if Stripe is
   not configured yet).
 - Confirmation page with order reference, payment state and calendar sync state.
@@ -28,8 +32,8 @@ Prices are clearly marked test prices.
 - Password-protected orders list with search (name, postcode, order ID, date),
   status filter, detail drawer and status changes.
 - Calendar-style month view plus a per-day delivery schedule.
-- Availability manager: close whole days, block individual windows, reduce a
-  window to one delivery, add an internal note, remove blocks.
+- Availability manager: close whole days or a single morning/afternoon round,
+  see truck space used per day, add an internal note, remove blocks.
 - Warning when closing a day that already has paid orders:
   “This day has X paid orders. Please contact customers to rearrange.”
   Paid orders are never deleted or cancelled automatically.
@@ -38,10 +42,11 @@ Prices are clearly marked test prices.
 
 **Booking integrity**
 - 15-minute reservations with automatic expiry.
-- Capacity is enforced with per-slot and per-day database locks, so parallel
-  checkouts cannot oversell a window.
-- Unavailable when full, blocked, closed, inside the 24-hour notice period,
-  reserved by someone else, or busy in the connected Google Calendar.
+- Capacity is enforced in tenths of a truck space with database locks, so
+  parallel checkouts cannot oversell a day.
+- Unavailable when the truck is full, the round is closed, the postcode does not
+  match that weekday, the date is inside the 24-hour notice period, reserved by
+  someone else, or busy in the connected Google Calendar.
 - Calendar events are created only after Stripe confirms payment — via webhook,
   or by server-side Stripe session verification on the confirmation page if the
   webhook is delayed or unavailable locally.
@@ -104,7 +109,7 @@ the app:
 
 Events created for orders:
 - Title: `Delivery: [Customer Name] — [Order Summary]`
-- Correct delivery date and two-hour window, `Europe/London`
+- Correct delivery date and morning/afternoon band, `Europe/London`
 - Transparency: **Busy** (blocks the window)
 - Description includes customer name, phone, email, address, postcode, contents,
   delivery notes, total, payment status and order ID
@@ -118,13 +123,13 @@ Blocks create a corresponding **“Blocked — no deliveries”** calendar event
 
 | Rule | Value |
 | --- | --- |
-| Delivery days | Monday–Friday |
-| Windows | 09:00–11:00, 11:00–13:00, 13:00–15:00, 15:00–17:00 |
-| Max per window | 2 |
-| Max per day | 6 |
+| Delivery days | Monday–Friday, one area round per weekday |
+| Rounds | Dereham & Swaffham Mon · Norwich Tue · Ipswich Wed · King's Lynn Thu · Cambridge Fri |
+| Promise | Morning 09:00–13:00 or afternoon 13:00–17:00 |
+| Truck capacity | 5 dumpy-bag equivalents per day |
+| Product space | Dumpy bag 1 · 20 nets 1 · 2m³ loose 3 · 3m³ loose 4.5 · kindling 0.1 · firelighters 0.05 · coal 0.25 |
 | Minimum notice | 24 hours |
 | Reservation hold | 15 minutes |
-| Sample delivery area | postcodes starting NR, IP, PE, CB |
 | Delivery charge | £12, free over £250 (test prices) |
 
 Availability also treats the connected Google Calendar's busy events as
@@ -139,15 +144,16 @@ spaces used correctly remains bookable. After the second booking it shows
 
 1. Open the site and add a dumpy bag and kindling.
 2. Enter a name, email, phone and an NR postcode.
-3. Choose an available weekday window (at least 24 hours ahead).
-4. Review the order — the slot is held for 15 minutes.
+3. Choose one of your area's round days (at least 24 hours ahead) and morning or
+   afternoon.
+4. Review the order — the truck space is held for 15 minutes.
 5. Pay with `4242 4242 4242 4242` in Stripe test mode (or the demo checkout if
    Stripe is not configured).
 6. On the confirmation page, note the order reference.
 7. Open Google Calendar → **All Fired Up Deliveries** and confirm the event is
    there at the correct time, marked Busy.
-8. In a second tab, refresh the customer slot picker: that window now shows one
-   space left (or Fully booked once capacity is reached).
+8. In a second tab, refresh the date picker: that day's remaining truck space has
+   dropped (or it shows fully booked once 5 spaces are used).
 9. Open `/admin` and find the order; change its status, add a block, or use the
    calendar view.
 
@@ -164,7 +170,8 @@ spaces used correctly remains bookable. After the second booking it shows
 - Admin passwords are stored as salted PBKDF2-SHA256 hashes.
 - Customer order lookups require the random order token.
 - Customer names/addresses are escaped before rendering in the dashboard.
-- No real customer emails are sent. The confirmation page simulates the email.
+- Customer emails and delivery-day reminders are sent through the connected
+  Google account's Gmail API; nothing is sent until Google is connected.
 
 ---
 
@@ -179,7 +186,9 @@ spaces used correctly remains bookable. After the second booking it shows
 Key files:
 - `src/index.ts` — routes
 - `src/orders.ts` — validation, reservations, payment finalisation, status changes
-- `src/availability.ts` — capacity, notice period, blocks, calendar busy merging
+- `src/zones.ts` — postcode districts and weekday rounds
+- `src/availability.ts` — truck-space capacity, notice period, blocks, calendar busy merging
+- `src/reminders.ts` — delivery-day reminder emails
 - `src/google.ts` — OAuth, calendar discovery, busy lookup, events
 - `src/stripe.ts` — Checkout sessions and webhook verification
 - `public/app.js` — customer flow
