@@ -1,6 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { BUSINESS, getSettings, setSetting, type BlockRow, type Env, type OrderRow } from "./db";
-import { addDays, londonToUtc, windowById } from "./time";
+import { addDays, bandById, londonToUtc, windowById } from "./time";
 
 export const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 
@@ -404,8 +404,11 @@ export async function createDeliveryEvent(
 ): Promise<{ id: string; link: string }> {
   const cfg = await googleConfig(env, db);
   if (!cfg.refreshToken) throw new GoogleError("Google Calendar is not connected.", 400);
-  const win = windowById(order.window_id);
-  if (!win) throw new GoogleError("Unknown delivery window.", 400);
+  const band = bandById(order.band);
+  const win = band ? null : windowById(order.window_id);
+  if (!band && !win) throw new GoogleError("Unknown delivery window.", 400);
+  const startTime = band ? band.start : win!.start;
+  const endTime = band ? band.end : win!.end;
 
   const description = [
     `Customer: ${order.customer_name}`,
@@ -425,8 +428,8 @@ export async function createDeliveryEvent(
   const body = {
     summary: `Delivery: ${order.customer_name} — ${summary}`,
     description,
-    start: { dateTime: `${order.delivery_date}T${win.start}:00`, timeZone: "Europe/London" },
-    end: { dateTime: `${order.delivery_date}T${win.end}:00`, timeZone: "Europe/London" },
+    start: { dateTime: `${order.delivery_date}T${startTime}:00`, timeZone: "Europe/London" },
+    end: { dateTime: `${order.delivery_date}T${endTime}:00`, timeZone: "Europe/London" },
     transparency: "opaque",
     status: "confirmed",
     colorId: "6",
@@ -454,8 +457,19 @@ export async function createBlockEvent(
   const cfg = await googleConfig(env, db);
   if (!cfg.refreshToken) throw new GoogleError("Google Calendar is not connected.", 400);
 
-  const body =
-    block.window_id === null
+  const blockBand = bandById(block.band);
+  const body = blockBand
+    ? {
+        summary: "Blocked — no deliveries",
+        description: `${block.note ? block.note + "\n\n" : ""}${blockBand.short} round closed in the All Fired Up admin.`,
+        start: { dateTime: `${block.date}T${blockBand.start}:00`, timeZone: "Europe/London" },
+        end: { dateTime: `${block.date}T${blockBand.end}:00`, timeZone: "Europe/London" },
+        transparency: "opaque",
+        status: "confirmed",
+        colorId: "8",
+        extendedProperties: { private: { source: "all-fired-up-block", block_id: block.id } },
+      }
+    : block.window_id === null
       ? {
           summary: "Blocked — no deliveries",
           description: `${block.note ? block.note + "\n\n" : ""}Whole day closed in the All Fired Up admin.`,

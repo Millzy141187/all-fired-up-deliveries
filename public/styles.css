@@ -276,6 +276,7 @@ p { margin: 0; }
 .day-card.closed { background: #faf4ea; }
 .day-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; background: var(--cream); border-bottom: 1px solid var(--line); }
 .day-head strong { font-family: var(--serif); font-size: 1rem; color: var(--charcoal); }
+.day-head .day-zone { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 1px; }
 .day-head .day-meta { font-size: 0.72rem; color: var(--muted); }
 .day-head .day-meta.full { color: var(--red); font-weight: 700; }
 .slot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 11px; }

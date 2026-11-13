@@ -16,6 +16,17 @@ export const MAX_PER_DAY = 6;
 export const MIN_NOTICE_HOURS = 24;
 export const RESERVATION_MINUTES = 15;
 
+/** How many dumpy-bag equivalents one truck load can carry. */
+export const TRUCK_UNITS_PER_DAY = 5;
+
+/** Customer-facing delivery promise: a day plus morning or afternoon. */
+export const DELIVERY_BANDS = [
+  { id: "morning", short: "Morning", label: "Morning (09:00 – 13:00)", start: "09:00", end: "13:00" },
+  { id: "afternoon", short: "Afternoon", label: "Afternoon (13:00 – 17:00)", start: "13:00", end: "17:00" },
+] as const;
+
+export type DeliveryBandId = (typeof DELIVERY_BANDS)[number]["id"];
+
 const partsFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: TIME_ZONE,
   year: "numeric",
@@ -107,6 +118,27 @@ export function formatShortDate(date: string): string {
 
 export function windowById(id: number) {
   return DELIVERY_WINDOWS.find((w) => w.id === id) ?? null;
+}
+
+export function bandById(id: string | null | undefined) {
+  return DELIVERY_BANDS.find((band) => band.id === id) ?? null;
+}
+
+export function bandStartUtc(date: string, band: DeliveryBandId): Date {
+  const found = bandById(band);
+  if (!found) throw new Error("Unknown delivery band");
+  return londonToUtc(date, found.start);
+}
+
+export function bandEndUtc(date: string, band: DeliveryBandId): Date {
+  const found = bandById(band);
+  if (!found) throw new Error("Unknown delivery band");
+  return londonToUtc(date, found.end);
+}
+
+/** Delivery date must start at least 24 hours from now, measured at the band start. */
+export function meetsNoticeBand(date: string, band: DeliveryBandId, now = new Date()): boolean {
+  return bandStartUtc(date, band).getTime() >= now.getTime() + MIN_NOTICE_HOURS * 3600_000;
 }
 
 export function windowStartUtc(date: string, windowId: number): Date {

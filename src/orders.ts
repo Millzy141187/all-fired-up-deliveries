@@ -3,7 +3,6 @@ import {
   DELIVERY_FEE_PENCE,
   deliveryFeeFor,
   getSetting,
-  isDeliveryPostcode,
   normalisePostcode,
   orderItems,
   orderSummaryShort,
@@ -13,13 +12,16 @@ import {
   type ProductRow,
 } from "./db";
 import {
+  acquireCapacity,
   acquireDayLock,
   acquireSlotLock,
   getSlotState,
   makeOrderLocksPermanent,
+  orderHasCapacity,
   orderHasSlotLock,
   releaseOrderLocks,
 } from "./availability";
+import { zoneForDate, zoneForPostcode } from "./zones";
 import {
   clearBusyCache,
   createDeliveryEvent,
@@ -38,10 +40,13 @@ import {
 } from "./stripe";
 import {
   RESERVATION_MINUTES,
+  TRUCK_UNITS_PER_DAY,
+  bandById,
   isWeekday,
-  meetsNotice,
+  meetsNoticeBand,
   todayLondon,
   windowById,
+  type DeliveryBandId,
 } from "./time";
 import { constantTimeEqual, newOrderId, newOrderRef, newToken } from "./crypto";
 
@@ -73,7 +78,7 @@ export interface CheckoutPayload {
     postcode?: string;
     notes?: string;
   };
-  delivery?: { date?: string; windowId?: number };
+  delivery?: { date?: string; band?: string; windowId?: number };
 }
 
 interface LineItem {
@@ -154,34 +159,71 @@ export async function buildReservation(
   if (!/^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i.test(postcodeRaw.replace(/\s+/g, " ").trim())) {
     throw new ValidationError("Please enter a valid UK postcode.");
   }
-  if (!isDeliveryPostcode(postcodeRaw)) {
+  const zone = zoneForPostcode(postcodeRaw);
+  if (!zone) {
     throw new ValidationError(
-      "Sorry, that postcode is outside our sample delivery area. This test app accepts NR, IP, PE and CB postcodes.",
+      "Sorry, we do not have a regular delivery round for that postcode yet. Please call us and we will see what we can arrange.",
       422,
       "OUT_OF_AREA",
     );
   }
   const postcode = normalisePostcode(postcodeRaw);
 
+  const units = Math.round(lines.reduce((sum, l) => sum + l.product.space_units * l.qty, 0) * 100) / 100;
+  if (units > TRUCK_UNITS_PER_DAY) {
+    throw new ValidationError(
+      `This order needs ${units} of the ${TRUCK_UNITS_PER_DAY} spaces on one truck load. Please reduce a bag or split the order.`,
+      400,
+      "TRUCK_FULL",
+    );
+  }
+
   const date = clean(payload.delivery?.date, 10);
-  const windowId = Math.floor(Number(payload.delivery?.windowId));
-  const win = windowById(windowId);
+  const rawBand = payload.delivery?.band;
+  const legacyWindow = Math.floor(Number(payload.delivery?.windowId));
+  const bandId: DeliveryBandId | null =
+    rawBand === "morning" || rawBand === "afternoon"
+      ? rawBand
+      : legacyWindow === 1 || legacyWindow === 2
+        ? "morning"
+        : legacyWindow === 3 || legacyWindow === 4
+          ? "afternoon"
+          : null;
+  const band = bandId ? bandById(bandId) : null;
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("Please choose a delivery date.");
   if (!isWeekday(date)) throw new ValidationError("Deliveries are available Monday to Friday only.", 409);
-  if (!win) throw new ValidationError("Please choose a delivery window.");
-  if (!meetsNotice(date, windowId)) {
+  if (date < todayLondon()) throw new ValidationError("That delivery date is in the past.", 409);
+  const dateZone = zoneForDate(date);
+  if (!dateZone) throw new ValidationError("We do not deliver on that day. Please choose another date.", 409);
+  if (dateZone.id !== zone.id) {
     throw new ValidationError(
-      "Delivery dates must be at least 24 hours away. Please choose a later slot.",
+      `We deliver to ${zone.name} on ${zone.dayLabel}s. Please choose a ${zone.dayLabel}.`,
+      409,
+      "WRONG_ZONE",
+    );
+  }
+  if (!bandId || !band) throw new ValidationError("Please choose morning or afternoon.");
+  if (!meetsNoticeBand(date, bandId)) {
+    throw new ValidationError(
+      "Delivery dates must be at least 24 hours away. Please choose a later date.",
       409,
       "TOO_SOON",
     );
   }
-  if (date < todayLondon()) throw new ValidationError("That delivery date is in the past.", 409);
 
-  const slotCheck = await getSlotState(env, db, date, windowId);
+  const slotCheck = await getSlotState(env, db, date, bandId);
   if (!slotCheck.slot || slotCheck.slot.state !== "available") {
     throw new ValidationError(
-      "That delivery window is no longer available. Please choose another slot.",
+      slotCheck.slot?.state === "full"
+        ? "That day's truck is now full. Please choose another date."
+        : "That delivery date is no longer available. Please choose another.",
+      409,
+      "SLOT_UNAVAILABLE",
+    );
+  }
+  if (slotCheck.day.unitsLeft < units) {
+    throw new ValidationError(
+      `Only ${slotCheck.day.unitsLeft} of the ${TRUCK_UNITS_PER_DAY} truck spaces are left on that day. Please reduce the order or choose another date.`,
       409,
       "SLOT_UNAVAILABLE",
     );
@@ -212,8 +254,11 @@ export async function buildReservation(
     postcode,
     notes,
     delivery_date: date,
-    window_id: windowId,
-    window_label: win.label,
+    window_id: 0,
+    window_label: band.label,
+    band: bandId,
+    zone: zone.name,
+    space_units: units,
     subtotal_pence: subtotal,
     delivery_pence: delivery,
     total_pence: total,
@@ -235,8 +280,8 @@ export async function buildReservation(
       .prepare(
         `INSERT INTO orders
          (id, ref, public_token, status, payment_status, customer_name, email, phone, address1, address2, city, postcode, notes,
-          delivery_date, window_id, window_label, subtotal_pence, delivery_pence, total_pence, reservation_expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, 'new', 'unpaid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          delivery_date, window_id, window_label, band, zone, space_units, subtotal_pence, delivery_pence, total_pence, reservation_expires_at, created_at, updated_at)
+         VALUES (?, ?, ?, 'new', 'unpaid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         order.id,
@@ -251,8 +296,11 @@ export async function buildReservation(
         postcode,
         notes,
         date,
-        windowId,
-        win.label,
+        0,
+        band.label,
+        bandId,
+        zone.name,
+        units,
         subtotal,
         delivery,
         total,
@@ -272,19 +320,10 @@ export async function buildReservation(
   }
   await db.batch(statements);
 
-  const dayOk = await acquireDayLock(db, date, id, expiresAt, now);
-  if (!dayOk) {
+  const spaceOk = await acquireCapacity(db, date, units, id, expiresAt);
+  if (!spaceOk) {
     await discardReservation(db, id);
-    throw new ValidationError("That day is now fully booked. Please choose another date.", 409, "DAY_FULL");
-  }
-  const capacity = await windowCapacity(db, date, windowId);
-  const slotOk =
-    capacity > 0
-      ? await acquireSlotLock(db, date, windowId, capacity, id, expiresAt, now)
-      : false;
-  if (!slotOk) {
-    await discardReservation(db, id);
-    throw new ValidationError("That delivery window has just been taken. Please choose another.", 409, "SLOT_FULL");
+    throw new ValidationError("That day's truck has just filled up. Please choose another date.", 409, "SLOT_FULL");
   }
 
   return { order, items: lines };
@@ -458,7 +497,21 @@ export async function finalizePaidOrder(
   const nowIso = new Date().toISOString();
   let calendarError: string | null = null;
 
-  if (!(await orderHasSlotLock(db, order.id))) {
+  if (order.band) {
+    if (!(await orderHasCapacity(db, order.id))) {
+      const spaceOk = await acquireCapacity(
+        db,
+        order.delivery_date,
+        order.space_units || 0,
+        order.id,
+        null,
+      );
+      if (!spaceOk) {
+        calendarError =
+          "Payment received after the truck space hold expired and the day was full. The order needs manual attention.";
+      }
+    }
+  } else if (!(await orderHasSlotLock(db, order.id))) {
     const win = windowById(order.window_id);
     const dayOk = await acquireDayLock(db, order.delivery_date, order.id, null, Date.now());
     const slotOk = win

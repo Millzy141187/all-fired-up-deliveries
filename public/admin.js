@@ -12,7 +12,14 @@ const STATUS_LABELS = {
   refunded: "Refunded",
 };
 
-const WINDOW_LABELS = ["09:00 – 11:00", "11:00 – 13:00", "13:00 – 15:00", "15:00 – 17:00"];
+const BAND_LABELS = {
+  morning: "Morning (09:00 – 13:00)",
+  afternoon: "Afternoon (13:00 – 17:00)",
+};
+
+function units(value) {
+  return Number(Number(value || 0).toFixed(2)).toString();
+}
 
 const state = {
   tab: "orders",
@@ -293,8 +300,7 @@ function bindEvents() {
     }
   });
 
-  $("#block-scope").addEventListener("change", toggleBlockFields);
-  for (const selector of ["#block-date", "#block-scope", "#block-window", "#block-capacity"]) {
+  for (const selector of ["#block-date", "#block-scope"]) {
     $(selector).addEventListener("change", () => {
       state.blockAck = false;
       $("#block-warning").hidden = true;
@@ -717,20 +723,17 @@ async function loadDay(date) {
 
     const windowHtml = day ? `
       <div class="slots" style="margin:4px 0 14px">
-        ${day.windows.map((win) => {
-          const label = win.state === "available"
-            ? `${win.booked}/${win.capacity} booked`
-            : win.state === "full" || win.state === "busy"
-              ? "Fully booked"
-              : win.state === "blocked" ? "Blocked" : "No notice";
-          return `<span class="slot-pill ${win.state === "available" ? "" : "blocked"}">${esc(win.label)} · ${esc(label)}</span>`;
+        <span class="slot-pill">${esc(day.zoneName)} round · ${units(day.unitsUsed)}/${day.unitsTotal} truck spaces</span>
+        ${day.bands.map((band) => {
+          const label = band.state === "available" ? "Open" : band.reason || "Closed";
+          return `<span class="slot-pill ${band.state === "available" ? "" : "blocked"}">${esc(band.label)} · ${esc(label)}</span>`;
         }).join("")}
       </div>` : "";
 
     const blocksHtml = data.blocks.length
       ? `<div style="margin-bottom:12px">${data.blocks.map((block) => `
           <div class="sched-item block">
-            <div><div class="when">${block.window_id ? esc(WINDOW_LABELS[block.window_id - 1]) : "Whole day"}</div>
+            <div><div class="when">${block.band ? esc(BAND_LABELS[block.band]) : block.window_id ? "Delivery window" : "Whole day"}</div>
               <div class="who">Blocked — no deliveries</div></div>
             <div class="what">${esc(block.note || "No internal note")}</div>
           </div>`).join("")}</div>`
@@ -786,23 +789,20 @@ function renderAvailability() {
   }
 
   list.innerHTML = days.map((day) => {
-    const blockedWindows = day.windows.filter((win) => win.state === "blocked").length;
-    const reduced = day.windows.filter((win) => win.capacity === 1).length;
-    const note = day.note || day.windows.find((win) => win.blockNote)?.blockNote || "";
+    const note = day.note || "";
     return `
       <div class="block-day-row">
         <div>
           <div class="date">${esc(day.label)}</div>
-          <div class="block-note">${day.closed ? "Closed" : `${day.booked} of ${day.capacity} booked`}${note ? ` · ${esc(note)}` : ""}</div>
+          <div class="block-note">${day.closed ? "Closed" : `${units(day.unitsUsed)} of ${day.unitsTotal} truck spaces used`}${note ? ` · ${esc(note)}` : ""}</div>
         </div>
         <div class="slots">
-          ${day.windows.map((win) => `
-            <span class="slot-pill ${win.state === "available" ? "" : "blocked"}" title="${esc(win.reason || "")}">
-              ${esc(win.label)} · ${win.state === "blocked" ? "Closed" : `${win.booked}/${win.capacity}`}
+          <span class="slot-pill">${esc(day.zoneName)}</span>
+          ${day.bands.map((band) => `
+            <span class="slot-pill ${band.state === "available" ? "" : "blocked"}" title="${esc(band.reason || "")}">
+              ${esc(band.label)} · ${band.state === "available" ? "Open" : esc(band.reason || "Closed")}
             </span>`).join("")}
           ${day.closed ? `<span class="slot-pill blocked">No deliveries available</span>` : ""}
-          ${reduced && !day.closed ? `<span class="slot-pill">Reduced capacity</span>` : ""}
-          ${blockedWindows && !day.closed ? `<span class="slot-pill blocked">${blockedWindows} window${blockedWindows === 1 ? "" : "s"} blocked</span>` : ""}
         </div>
         <div>
           <button class="btn btn-outline btn-sm" type="button" data-block-date="${esc(day.date)}">Block / edit</button>
@@ -814,7 +814,7 @@ function renderAvailability() {
 function renderBlocks() {
   const list = $("#block-list");
   if (!state.blocks.length) {
-    list.innerHTML = `<div class="empty">No blocked days or reduced-capacity windows.</div>`;
+    list.innerHTML = `<div class="empty">No blocked days or rounds.</div>`;
     return;
   }
   list.innerHTML = state.blocks.map((block) => `
@@ -824,9 +824,9 @@ function renderBlocks() {
         <div class="block-note">${esc(block.note || "No internal note")}</div>
       </div>
       <div class="slots">
-        <span class="slot-pill ${block.capacity === 0 ? "blocked" : ""}">
-          ${block.window_id ? esc(WINDOW_LABELS[block.window_id - 1]) : "Whole day"}
-          ${block.capacity === 0 ? "· Closed" : `· ${block.capacity} deliver${block.capacity === 1 ? "y" : "ies"}`}
+        <span class="slot-pill blocked">
+          ${block.band ? esc(BAND_LABELS[block.band]) : block.window_id ? "Delivery window" : "Whole day"}
+          · Closed
         </span>
         ${block.calendar_event_id ? `<span class="slot-pill">Calendar event created</span>` : ""}
       </div>
@@ -836,13 +836,6 @@ function renderBlocks() {
     </div>`).join("");
 }
 
-function toggleBlockFields() {
-  const windowScope = $("#block-scope").value === "window";
-  $("#block-window-field").hidden = !windowScope;
-  $("#block-capacity-field").hidden = !windowScope;
-  $("#block-capacity").disabled = !windowScope;
-}
-
 function openBlockDialog(date, block = null) {
   state.blockAck = false;
   $("#block-warning").hidden = true;
@@ -850,20 +843,7 @@ function openBlockDialog(date, block = null) {
   $("#block-date").value = date;
   $("#block-date").min = state.today;
   $("#block-note").value = block?.note || "";
-
-  if (block) {
-    if (block.window_id) {
-      $("#block-scope").value = "window";
-      $("#block-window").value = String(block.window_id);
-      $("#block-capacity").value = String(block.capacity);
-    } else {
-      $("#block-scope").value = "day";
-    }
-  } else {
-    $("#block-scope").value = "day";
-    $("#block-capacity").value = "0";
-  }
-  toggleBlockFields();
+  $("#block-scope").value = block?.band || "day";
   $("#block-dialog").showModal();
 }
 
@@ -872,8 +852,7 @@ async function submitBlock(event) {
   const scope = $("#block-scope").value;
   const payload = {
     date: $("#block-date").value,
-    windowId: scope === "day" ? null : Number($("#block-window").value),
-    capacity: scope === "day" ? 0 : Number($("#block-capacity").value),
+    band: scope === "day" ? null : scope,
     note: $("#block-note").value.trim(),
     acknowledge: state.blockAck,
   };

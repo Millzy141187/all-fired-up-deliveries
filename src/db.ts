@@ -1,5 +1,7 @@
 import { hashPassword, randomHex, newOrderRef, newToken } from "./crypto";
 import { addDays, isWeekday, nextWeekdays, todayLondon, windowById } from "./time";
+import { zoneForDate, zoneForPostcode, type DeliveryZone } from "./zones";
+import { DELIVERY_BANDS } from "./time";
 
 export interface Env {
   DB: D1Database;
@@ -53,6 +55,7 @@ export interface ProductRow {
   category: string;
   image: string;
   max_qty: number;
+  space_units: number;
   addon_only: number;
   requires_firewood: number;
   sort: number;
@@ -77,6 +80,9 @@ export interface OrderRow {
   delivery_date: string;
   window_id: number;
   window_label: string;
+  band: string;
+  zone: string;
+  space_units: number;
   subtotal_pence: number;
   delivery_pence: number;
   total_pence: number;
@@ -107,6 +113,7 @@ export interface BlockRow {
   id: string;
   date: string;
   window_id: number | null;
+  band: string;
   capacity: number;
   note: string;
   calendar_event_id: string | null;
@@ -125,6 +132,7 @@ export const DEFAULT_PRODUCTS = [
     category: "Logs",
     image: "/img/logs-dumpy.svg",
     max_qty: 6,
+    space_units: 1,
     addon_only: 0,
     requires_firewood: 0,
     sort: 1,
@@ -142,6 +150,7 @@ export const DEFAULT_PRODUCTS = [
     category: "Loose loads",
     image: "/img/logs-loose.svg",
     max_qty: 4,
+    space_units: 3,
     addon_only: 0,
     requires_firewood: 0,
     sort: 2,
@@ -159,6 +168,7 @@ export const DEFAULT_PRODUCTS = [
     category: "Loose loads",
     image: "/img/logs-loose.svg",
     max_qty: 3,
+    space_units: 4.5,
     addon_only: 0,
     requires_firewood: 0,
     sort: 3,
@@ -176,6 +186,7 @@ export const DEFAULT_PRODUCTS = [
     category: "Nets",
     image: "/img/logs-nets.svg",
     max_qty: 5,
+    space_units: 1,
     addon_only: 0,
     requires_firewood: 0,
     sort: 4,
@@ -193,6 +204,7 @@ export const DEFAULT_PRODUCTS = [
     category: "Fire starters",
     image: "/img/kindling.svg",
     max_qty: 10,
+    space_units: 0.1,
     addon_only: 1,
     requires_firewood: 1,
     sort: 5,
@@ -210,6 +222,7 @@ export const DEFAULT_PRODUCTS = [
     category: "Fire starters",
     image: "/img/firelighters.svg",
     max_qty: 6,
+    space_units: 0.05,
     addon_only: 0,
     requires_firewood: 0,
     sort: 6,
@@ -227,6 +240,7 @@ export const DEFAULT_PRODUCTS = [
     category: "Fuel",
     image: "/img/coal.svg",
     max_qty: 6,
+    space_units: 0.25,
     addon_only: 1,
     requires_firewood: 1,
     sort: 7,
@@ -246,6 +260,7 @@ CREATE TABLE IF NOT EXISTS products (
   category TEXT NOT NULL DEFAULT '',
   image TEXT NOT NULL DEFAULT '',
   max_qty INTEGER NOT NULL DEFAULT 6,
+  space_units REAL NOT NULL DEFAULT 1,
   addon_only INTEGER NOT NULL DEFAULT 0,
   requires_firewood INTEGER NOT NULL DEFAULT 0,
   sort INTEGER NOT NULL DEFAULT 99,
@@ -269,6 +284,9 @@ CREATE TABLE IF NOT EXISTS orders (
   delivery_date TEXT NOT NULL,
   window_id INTEGER NOT NULL,
   window_label TEXT NOT NULL DEFAULT '',
+  band TEXT NOT NULL DEFAULT '',
+  zone TEXT NOT NULL DEFAULT '',
+  space_units REAL NOT NULL DEFAULT 0,
   subtotal_pence INTEGER NOT NULL DEFAULT 0,
   delivery_pence INTEGER NOT NULL DEFAULT 0,
   total_pence INTEGER NOT NULL DEFAULT 0,
@@ -322,12 +340,21 @@ CREATE TABLE IF NOT EXISTS blocks (
   id TEXT PRIMARY KEY,
   date TEXT NOT NULL,
   window_id INTEGER,
+  band TEXT NOT NULL DEFAULT '',
   capacity INTEGER NOT NULL DEFAULT 0,
   note TEXT NOT NULL DEFAULT '',
   calendar_event_id TEXT,
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_blocks_date ON blocks(date);
+CREATE TABLE IF NOT EXISTS capacity_locks (
+  date TEXT NOT NULL,
+  unit INTEGER NOT NULL,
+  order_id TEXT NOT NULL,
+  expires_at INTEGER,
+  PRIMARY KEY (date, unit)
+);
+CREATE INDEX IF NOT EXISTS idx_capacity_order ON capacity_locks(order_id);
 CREATE TABLE IF NOT EXISTS slot_locks (
   date TEXT NOT NULL,
   window_id INTEGER NOT NULL,
@@ -371,7 +398,7 @@ async function initialise(db: D1Database): Promise<void> {
     const ready = await db
       .prepare("SELECT value FROM settings WHERE key = 'schema_version'")
       .first<{ value: string }>();
-    if (ready?.value === "3") return;
+    if (ready?.value === "4") return;
   } catch {
     // A fresh D1 database has no settings table yet.
   }
@@ -383,14 +410,98 @@ async function initialise(db: D1Database): Promise<void> {
     .filter(Boolean);
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
 
+  // Columns added after launch. D1 has no ADD COLUMN IF NOT EXISTS, so an
+  // existing column is expected to throw and is ignored.
+  for (const alter of [
+    "ALTER TABLE products ADD COLUMN space_units REAL NOT NULL DEFAULT 1",
+    "ALTER TABLE orders ADD COLUMN band TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE orders ADD COLUMN zone TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE orders ADD COLUMN space_units REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE blocks ADD COLUMN band TEXT NOT NULL DEFAULT ''",
+  ]) {
+    try {
+      await db.prepare(alter).run();
+    } catch {
+      // Column already exists.
+    }
+  }
+
+  await db
+    .prepare(
+      `UPDATE products SET space_units = CASE id
+         WHEN 'loose-load-2m3' THEN 3
+         WHEN 'loose-load-3m3' THEN 4.5
+         WHEN 'logs-20-nets' THEN 1
+         WHEN 'kindling' THEN 0.1
+         WHEN 'firelighters' THEN 0.05
+         WHEN 'smokeless-coal-25kg' THEN 0.25
+         ELSE 1 END`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `UPDATE orders SET space_units = COALESCE((
+         SELECT SUM(i.qty * p.space_units) FROM order_items i
+         JOIN products p ON p.id = i.product_id WHERE i.order_id = orders.id
+       ), 0) WHERE space_units = 0`,
+    )
+    .run();
+  await db
+    .prepare(
+      "UPDATE orders SET band = CASE WHEN window_id IN (1, 2) THEN 'morning' ELSE 'afternoon' END WHERE band = ''",
+    )
+    .run();
+  const zoneRows = await db
+    .prepare("SELECT id, postcode FROM orders WHERE zone = ''")
+    .all<{ id: string; postcode: string }>();
+  for (const row of zoneRows.results ?? []) {
+    const zone = zoneForPostcode(row.postcode);
+    if (zone) {
+      await db.prepare("UPDATE orders SET zone = ? WHERE id = ?").bind(zone.name, row.id).run();
+    }
+  }
+
+  // Sample orders created before area rounds may sit on the wrong weekday.
+  // Move future examples onto their zone's day so the demo data is coherent.
+  const sampleRows = await db
+    .prepare("SELECT id, delivery_date, postcode FROM orders WHERE is_sample = 1 AND delivery_date >= ?")
+    .bind(todayLondon())
+    .all<{ id: string; delivery_date: string; postcode: string }>();
+  for (const row of sampleRows.results ?? []) {
+    const zone = zoneForPostcode(row.postcode);
+    if (!zone) continue;
+    let cursor = row.delivery_date;
+    for (let i = 0; i < 14 && zoneForDate(cursor)?.id !== zone.id; i++) cursor = addDays(cursor, 1);
+    if (zoneForDate(cursor)?.id === zone.id && cursor !== row.delivery_date) {
+      await db
+        .prepare("UPDATE orders SET delivery_date = ? WHERE id = ?")
+        .bind(cursor, row.id)
+        .run();
+      await db.prepare("DELETE FROM slot_locks WHERE order_id = ?").bind(row.id).run();
+      await db.prepare("DELETE FROM day_locks WHERE order_id = ?").bind(row.id).run();
+    }
+  }
+
+  await db
+    .prepare(
+      `UPDATE orders SET window_label = CASE band
+         WHEN 'morning' THEN 'Morning (09:00 – 13:00)'
+         WHEN 'afternoon' THEN 'Afternoon (13:00 – 17:00)'
+         ELSE window_label END
+       WHERE delivery_date >= ? AND status NOT IN ('cancelled','refunded')`,
+    )
+    .bind(todayLondon())
+    .run();
+
   const productCount = await db.prepare("SELECT COUNT(*) AS n FROM products").first<{ n: number }>();
   if (!productCount || productCount.n === 0) {
     const statements = DEFAULT_PRODUCTS.map((p) =>
       db
         .prepare(
           `INSERT OR IGNORE INTO products
-           (id, name, subtitle, description, price_pence, unit, category, image, max_qty, addon_only, requires_firewood, sort, active, note)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, name, subtitle, description, price_pence, unit, category, image, max_qty, space_units, addon_only, requires_firewood, sort, active, note)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           p.id,
@@ -402,6 +513,7 @@ async function initialise(db: D1Database): Promise<void> {
           p.category,
           p.image,
           p.max_qty,
+          p.space_units,
           p.addon_only,
           p.requires_firewood,
           p.sort,
@@ -436,8 +548,31 @@ async function initialise(db: D1Database): Promise<void> {
     await setSetting(db, "sample_orders_seeded", "1");
   }
 
+  // Orders that predate truck-space capacity need matching lock rows, otherwise
+  // a new booking could claim space the old orders already occupy.
+  const activeOrders = await db
+    .prepare(
+      `SELECT id, delivery_date, space_units FROM orders
+       WHERE delivery_date >= ? AND status NOT IN ('cancelled','refunded','expired')
+         AND (payment_status = 'paid' OR (reservation_expires_at IS NOT NULL AND reservation_expires_at > ?))`,
+    )
+    .bind(todayLondon(), Date.now())
+    .all<{ id: string; delivery_date: string; space_units: number }>();
+  const capacityStatements: D1PreparedStatement[] = [];
+  for (const order of activeOrders.results ?? []) {
+    const needed = Math.min(50, Math.ceil((order.space_units || 0) * 10 - 1e-9));
+    for (let unit = 1; unit <= needed; unit++) {
+      capacityStatements.push(
+        db
+          .prepare("INSERT OR IGNORE INTO capacity_locks (date, unit, order_id, expires_at) VALUES (?, ?, ?, NULL)")
+          .bind(order.delivery_date, unit, order.id),
+      );
+    }
+  }
+  if (capacityStatements.length) await db.batch(capacityStatements);
+
   // Written last so a partially completed first boot is retried.
-  await setSetting(db, "schema_version", "3");
+  await setSetting(db, "schema_version", "4");
 }
 
 export async function getSetting(db: D1Database, key: string): Promise<string | null> {
@@ -627,11 +762,29 @@ async function seedSampleOrders(db: D1Database): Promise<void> {
     },
   ];
 
+  function nextMatchingDate(from: string, zone: DeliveryZone): string {
+    let cursor = from;
+    for (let i = 0; i < 14; i++) {
+      if (zoneForDate(cursor)?.id === zone.id) return cursor;
+      cursor = addDays(cursor, 1);
+    }
+    return from;
+  }
+
   const statements: D1PreparedStatement[] = [];
   for (const sample of samples) {
-    if (!isWeekday(sample.date)) continue;
     const window = windowById(sample.windowId);
     if (!window) continue;
+    const zone = zoneForPostcode(sample.postcode);
+    const deliveryDate =
+      sample.status === "delivered" || !zone ? sample.date : nextMatchingDate(sample.date, zone);
+    if (!isWeekday(deliveryDate)) continue;
+    const band = sample.windowId <= 2 ? "morning" : "afternoon";
+    const bandLabel = DELIVERY_BANDS.find((item) => item.id === band)?.label || window.label;
+    const spaceUnits = sample.items.reduce((sum, item) => {
+      const product = products.get(item.id);
+      return sum + (product ? product.space_units * item.qty : 0);
+    }, 0);
     const orderId = crypto.randomUUID();
     const subtotal = sample.items.reduce((sum, item) => {
       const product = products.get(item.id);
@@ -646,8 +799,8 @@ async function seedSampleOrders(db: D1Database): Promise<void> {
         .prepare(
           `INSERT OR IGNORE INTO orders
            (id, ref, public_token, status, payment_status, customer_name, email, phone, address1, address2, city, postcode, notes,
-            delivery_date, window_id, window_label, subtotal_pence, delivery_pence, total_pence, paid_at, created_at, updated_at, is_sample)
-           VALUES (?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            delivery_date, window_id, window_label, band, zone, space_units, subtotal_pence, delivery_pence, total_pence, paid_at, created_at, updated_at, is_sample)
+           VALUES (?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         )
         .bind(
           orderId,
@@ -662,9 +815,12 @@ async function seedSampleOrders(db: D1Database): Promise<void> {
           sample.city,
           sample.postcode,
           sample.notes,
-          sample.date,
+          deliveryDate,
           sample.windowId,
-          window.label,
+          bandLabel,
+          band,
+          zone?.name || "",
+          spaceUnits,
           subtotal,
           delivery,
           subtotal + delivery,
@@ -690,12 +846,12 @@ async function seedSampleOrders(db: D1Database): Promise<void> {
       statements.push(
         db
           .prepare("INSERT OR IGNORE INTO day_locks (date, seq, order_id, expires_at) VALUES (?, ?, ?, NULL)")
-          .bind(sample.date, sample.day, orderId),
+          .bind(deliveryDate, sample.day, orderId),
         db
           .prepare(
             "INSERT OR IGNORE INTO slot_locks (date, window_id, seq, order_id, expires_at) VALUES (?, ?, ?, ?, NULL)",
           )
-          .bind(sample.date, sample.windowId, sample.slotSeq, orderId),
+          .bind(deliveryDate, sample.windowId, sample.slotSeq, orderId),
       );
     }
   }
@@ -707,11 +863,15 @@ async function seedSampleOrders(db: D1Database): Promise<void> {
 export async function cleanupExpiredReservations(db: D1Database): Promise<void> {
   const now = Date.now();
   const expired = await db
-    .prepare("SELECT 1 AS x FROM slot_locks WHERE expires_at IS NOT NULL AND expires_at <= ? LIMIT 1")
-    .bind(now)
+    .prepare(
+      `SELECT 1 AS x FROM capacity_locks WHERE expires_at IS NOT NULL AND expires_at <= ?
+       UNION ALL SELECT 1 AS x FROM slot_locks WHERE expires_at IS NOT NULL AND expires_at <= ? LIMIT 1`,
+    )
+    .bind(now, now)
     .first();
   if (!expired) return;
   await db.batch([
+    db.prepare("DELETE FROM capacity_locks WHERE expires_at IS NOT NULL AND expires_at <= ?").bind(now),
     db.prepare("DELETE FROM slot_locks WHERE expires_at IS NOT NULL AND expires_at <= ?").bind(now),
     db.prepare("DELETE FROM day_locks WHERE expires_at IS NOT NULL AND expires_at <= ?").bind(now),
     db

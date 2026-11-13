@@ -1,33 +1,32 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import {
-  MAX_PER_DAY,
-  MAX_PER_WINDOW,
+  DELIVERY_BANDS,
   MIN_NOTICE_HOURS,
-  DELIVERY_WINDOWS,
+  TRUCK_UNITS_PER_DAY,
   addDays,
+  bandById,
+  bandEndUtc,
+  bandStartUtc,
   formatLongDate,
   formatShortDate,
   isWeekday,
   londonToUtc,
   todayLondon,
   weekdayIndex,
+  type DeliveryBandId,
 } from "./time";
 import { cleanupExpiredReservations, type BlockRow, type Env, type OrderRow } from "./db";
 import { calendarBusy, type BusyInterval } from "./google";
+import { zoneForDate } from "./zones";
 
 export type SlotState = "available" | "full" | "blocked" | "past" | "busy";
 
-export interface SlotView {
-  id: number;
+export interface BandView {
+  id: DeliveryBandId;
   label: string;
-  start: string;
-  end: string;
+  short: string;
   state: SlotState;
-  capacity: number;
-  booked: number;
-  remaining: number;
   reason?: string;
-  blockNote?: string;
 }
 
 export interface DayView {
@@ -35,12 +34,15 @@ export interface DayView {
   label: string;
   longLabel: string;
   weekday: string;
+  zoneId: string;
+  zoneName: string;
   closed: boolean;
   closedLabel: string;
   note?: string;
-  booked: number;
-  capacity: number;
-  windows: SlotView[];
+  unitsUsed: number;
+  unitsTotal: number;
+  unitsLeft: number;
+  bands: BandView[];
 }
 
 export interface AvailabilityResult {
@@ -52,8 +54,7 @@ export interface AvailabilityResult {
     error?: string;
   };
   rules: {
-    maxPerWindow: number;
-    maxPerDay: number;
+    unitsPerDay: number;
     minNoticeHours: number;
     reservationMinutes: number;
   };
@@ -61,16 +62,11 @@ export interface AvailabilityResult {
 
 interface AvailabilityContext {
   blocks: BlockRow[];
-  slotLocks: Map<string, number>;
-  dayLocks: Map<string, number>;
+  usedUnits: Map<string, number>;
   busy: BusyInterval[];
   cutoff: number;
   now: number;
   includeNotes: boolean;
-}
-
-function slotKey(date: string, windowId: number) {
-  return `${date}:${windowId}`;
 }
 
 export async function loadAvailabilityContext(
@@ -84,31 +80,23 @@ export async function loadAvailabilityContext(
   const now = Date.now();
   const cutoff = now + MIN_NOTICE_HOURS * 3600_000;
 
-  const [blockRes, slotRes, dayRes, busyResult] = await Promise.all([
+  const [blockRes, unitRes, busyResult] = await Promise.all([
     db.prepare("SELECT * FROM blocks WHERE date >= ? AND date <= ?").bind(fromDate, toDate).all<BlockRow>(),
     db
       .prepare(
-        `SELECT date, window_id, COUNT(*) AS n FROM slot_locks
-         WHERE date >= ? AND date <= ? AND (expires_at IS NULL OR expires_at > ?)
-         GROUP BY date, window_id`,
+        `SELECT delivery_date, COALESCE(SUM(space_units), 0) AS units FROM orders
+         WHERE delivery_date >= ? AND delivery_date <= ?
+           AND status NOT IN ('cancelled','refunded','expired')
+           AND (payment_status = 'paid' OR (reservation_expires_at IS NOT NULL AND reservation_expires_at > ?))
+         GROUP BY delivery_date`,
       )
       .bind(fromDate, toDate, now)
-      .all<{ date: string; window_id: number; n: number }>(),
-    db
-      .prepare(
-        `SELECT date, COUNT(*) AS n FROM day_locks
-         WHERE date >= ? AND date <= ? AND (expires_at IS NULL OR expires_at > ?)
-         GROUP BY date`,
-      )
-      .bind(fromDate, toDate, now)
-      .all<{ date: string; n: number }>(),
+      .all<{ delivery_date: string; units: number }>(),
     calendarBusy(env, db, londonToUtc(fromDate, "00:00").toISOString(), londonToUtc(addDays(toDate, 1), "00:00").toISOString()),
   ]);
 
-  const slotLocks = new Map<string, number>();
-  for (const r of slotRes.results ?? []) slotLocks.set(slotKey(r.date, r.window_id), r.n);
-  const dayLocks = new Map<string, number>();
-  for (const r of dayRes.results ?? []) dayLocks.set(r.date, r.n);
+  const usedUnits = new Map<string, number>();
+  for (const row of unitRes.results ?? []) usedUnits.set(row.delivery_date, Number(row.units) || 0);
 
   const calendar: AvailabilityResult["calendar"] = {
     status: busyResult.status,
@@ -122,8 +110,7 @@ export async function loadAvailabilityContext(
   return {
     ctx: {
       blocks: blockRes.results ?? [],
-      slotLocks,
-      dayLocks,
+      usedUnits,
       busy: busyResult.intervals,
       cutoff,
       now,
@@ -133,53 +120,49 @@ export async function loadAvailabilityContext(
   };
 }
 
-export function buildDay(date: string, ctx: AvailabilityContext): DayView {
-  const dayBooked = ctx.dayLocks.get(date) ?? 0;
-  const dayBlocks = ctx.blocks.filter((b) => b.date === date);
-  const wholeDayBlock = dayBlocks.find((b) => b.window_id === null);
-  const note = ctx.includeNotes ? wholeDayBlock?.note || undefined : undefined;
+function bandBlockFor(date: string, band: DeliveryBandId, blocks: BlockRow[]): BlockRow | undefined {
+  return blocks.find((block) => {
+    if (block.date !== date) return false;
+    if (block.band) return block.band === band;
+    // Legacy blocks were created against the old two-hour windows.
+    if (band === "morning") return block.window_id === 1 || block.window_id === 2;
+    return block.window_id === 3 || block.window_id === 4;
+  });
+}
 
-  const windows: SlotView[] = DELIVERY_WINDOWS.map((win) => {
-    const block = dayBlocks.find((b) => b.window_id === win.id);
-    const capacity = block ? block.capacity : MAX_PER_WINDOW;
-    const booked = ctx.slotLocks.get(slotKey(date, win.id)) ?? 0;
-    const start = londonToUtc(date, win.start).getTime();
-    const end = londonToUtc(date, win.end).getTime();
+export function buildDay(date: string, ctx: AvailabilityContext): DayView {
+  const zone = zoneForDate(date);
+  const dayBlocks = ctx.blocks.filter((block) => block.date === date);
+  const wholeDayBlock = dayBlocks.find((block) => block.window_id === null && !block.band);
+  const note = ctx.includeNotes ? wholeDayBlock?.note || undefined : undefined;
+  const unitsUsed = Math.round((ctx.usedUnits.get(date) ?? 0) * 100) / 100;
+  const unitsLeft = Math.max(0, Math.round((TRUCK_UNITS_PER_DAY - unitsUsed) * 100) / 100);
+
+  const bands: BandView[] = DELIVERY_BANDS.map((band) => {
+    const block = bandBlockFor(date, band.id, dayBlocks);
+    const start = bandStartUtc(date, band.id).getTime();
+    const end = bandEndUtc(date, band.id).getTime();
     let state: SlotState = "available";
     let reason: string | undefined;
 
     if (wholeDayBlock) {
       state = "blocked";
-      reason = "Whole day closed";
+      reason = "No deliveries this day";
     } else if (block && block.capacity === 0) {
       state = "blocked";
-      reason = "Window blocked";
+      reason = "Closed for this round";
     } else if (start < ctx.cutoff) {
       state = "past";
       reason = "Needs 24 hours' notice";
-    } else if (dayBooked >= MAX_PER_DAY || booked >= capacity) {
+    } else if (unitsLeft <= 0) {
       state = "full";
-      reason = "At capacity";
-    } else if (ctx.busy.some((b) => b.start < end && b.end > start)) {
+      reason = "Truck full";
+    } else if (ctx.busy.some((busy) => busy.start < end && busy.end > start)) {
       state = "busy";
       reason = "Busy in Google Calendar";
     }
 
-    const remaining =
-      state === "available" ? Math.max(0, Math.min(capacity, MAX_PER_DAY - dayBooked) - booked) : 0;
-
-    return {
-      id: win.id,
-      label: win.label,
-      start: win.start,
-      end: win.end,
-      state,
-      capacity: wholeDayBlock ? 0 : capacity,
-      booked,
-      remaining,
-      reason,
-      blockNote: ctx.includeNotes ? block?.note || undefined : undefined,
-    };
+    return { id: band.id, label: band.label, short: band.short, state, reason };
   });
 
   const closed = Boolean(wholeDayBlock);
@@ -190,12 +173,15 @@ export function buildDay(date: string, ctx: AvailabilityContext): DayView {
     weekday: new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" }).format(
       new Date(`${date}T12:00:00Z`),
     ),
+    zoneId: zone?.id || "",
+    zoneName: zone?.name || "No round",
     closed,
     closedLabel: closed ? "No deliveries available" : "",
     note,
-    booked: dayBooked,
-    capacity: closed ? 0 : Math.min(MAX_PER_DAY, windows.reduce((sum, w) => sum + w.capacity, 0)),
-    windows,
+    unitsUsed,
+    unitsTotal: TRUCK_UNITS_PER_DAY,
+    unitsLeft,
+    bands,
   };
 }
 
@@ -215,9 +201,9 @@ export async function computeAvailability(
     if (!isWeekday(date)) continue;
     const day = buildDay(date, ctx);
     if (!opts.includePast) {
-      // Hide dates where the last delivery window already fails the 24-hour notice rule.
-      const lastWindowEnd = londonToUtc(date, "17:00").getTime();
-      if (lastWindowEnd < ctx.cutoff) continue;
+      // Hide dates where the last delivery band already fails the 24-hour notice rule.
+      const lastBandEnd = londonToUtc(date, "17:00").getTime();
+      if (lastBandEnd < ctx.cutoff) continue;
     }
     out.push(day);
   }
@@ -226,8 +212,7 @@ export async function computeAvailability(
     days: out,
     calendar,
     rules: {
-      maxPerWindow: MAX_PER_WINDOW,
-      maxPerDay: MAX_PER_DAY,
+      unitsPerDay: TRUCK_UNITS_PER_DAY,
       minNoticeHours: MIN_NOTICE_HOURS,
       reservationMinutes: 15,
     },
@@ -238,11 +223,54 @@ export async function getSlotState(
   env: Env,
   db: D1Database,
   date: string,
-  windowId: number,
-): Promise<{ day: DayView; slot: SlotView | null }> {
+  band: DeliveryBandId,
+): Promise<{ day: DayView; slot: BandView | null }> {
   const { ctx } = await loadAvailabilityContext(env, db, date, date);
   const day = buildDay(date, ctx);
-  return { day, slot: day.windows.find((w) => w.id === windowId) ?? null };
+  return { day, slot: day.bands.find((item) => item.id === band) ?? null };
+}
+
+const UNIT_SLOTS = Math.round(TRUCK_UNITS_PER_DAY * 10);
+
+/**
+ * Claim truck space in tenths of a unit. Rows are inserted with INSERT OR IGNORE
+ * so two simultaneous checkouts cannot both take the last space.
+ */
+export async function acquireCapacity(
+  db: D1Database,
+  date: string,
+  units: number,
+  orderId: string,
+  expiresAt: number | null,
+): Promise<boolean> {
+  const need = Math.min(UNIT_SLOTS, Math.ceil(units * 10 - 1e-9));
+  if (need <= 0) return true;
+  const taken = await db
+    .prepare(
+      "SELECT unit FROM capacity_locks WHERE date = ? AND (expires_at IS NULL OR expires_at > ?)",
+    )
+    .bind(date, Date.now())
+    .all<{ unit: number }>();
+  const takenUnits = new Set((taken.results ?? []).map((row) => row.unit));
+  const free: number[] = [];
+  for (let unit = 1; unit <= UNIT_SLOTS && free.length < need; unit++) {
+    if (!takenUnits.has(unit)) free.push(unit);
+  }
+  if (free.length < need) return false;
+  const results = await db.batch(
+    free.map((unit) =>
+      db
+        .prepare("INSERT OR IGNORE INTO capacity_locks (date, unit, order_id, expires_at) VALUES (?, ?, ?, ?)")
+        .bind(date, unit, orderId, expiresAt),
+    ),
+  );
+  let claimed = 0;
+  for (const result of results) claimed += result.meta.changes ?? 0;
+  if (claimed < need) {
+    await releaseOrderLocks(db, orderId);
+    return false;
+  }
+  return true;
 }
 
 export async function acquireDayLock(
@@ -256,8 +284,8 @@ export async function acquireDayLock(
     .prepare("SELECT seq FROM day_locks WHERE date = ? AND (expires_at IS NULL OR expires_at > ?)")
     .bind(date, now)
     .all<{ seq: number }>();
-  const taken = new Set((used.results ?? []).map((r) => r.seq));
-  for (let seq = 1; seq <= MAX_PER_DAY; seq++) {
+  const taken = new Set((used.results ?? []).map((row) => row.seq));
+  for (let seq = 1; seq <= 6; seq++) {
     if (taken.has(seq)) continue;
     const res = await db
       .prepare("INSERT OR IGNORE INTO day_locks (date, seq, order_id, expires_at) VALUES (?, ?, ?, ?)")
@@ -283,7 +311,7 @@ export async function acquireSlotLock(
     )
     .bind(date, windowId, now)
     .all<{ seq: number }>();
-  const taken = new Set((used.results ?? []).map((r) => r.seq));
+  const taken = new Set((used.results ?? []).map((row) => row.seq));
   for (let seq = 1; seq <= capacity; seq++) {
     if (taken.has(seq)) continue;
     const res = await db
@@ -299,6 +327,7 @@ export async function acquireSlotLock(
 
 export async function releaseOrderLocks(db: D1Database, orderId: string): Promise<void> {
   await db.batch([
+    db.prepare("DELETE FROM capacity_locks WHERE order_id = ?").bind(orderId),
     db.prepare("DELETE FROM slot_locks WHERE order_id = ?").bind(orderId),
     db.prepare("DELETE FROM day_locks WHERE order_id = ?").bind(orderId),
   ]);
@@ -306,9 +335,18 @@ export async function releaseOrderLocks(db: D1Database, orderId: string): Promis
 
 export async function makeOrderLocksPermanent(db: D1Database, orderId: string): Promise<void> {
   await db.batch([
+    db.prepare("UPDATE capacity_locks SET expires_at = NULL WHERE order_id = ?").bind(orderId),
     db.prepare("UPDATE slot_locks SET expires_at = NULL WHERE order_id = ?").bind(orderId),
     db.prepare("UPDATE day_locks SET expires_at = NULL WHERE order_id = ?").bind(orderId),
   ]);
+}
+
+export async function orderHasCapacity(db: D1Database, orderId: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 AS x FROM capacity_locks WHERE order_id = ? LIMIT 1")
+    .bind(orderId)
+    .first();
+  return Boolean(row);
 }
 
 export async function orderHasSlotLock(db: D1Database, orderId: string): Promise<boolean> {
@@ -339,15 +377,17 @@ export function adminCalendarMonth(month: string, orders: OrderRow[], blocks: Bl
   }
   for (let d = 1; d <= daysInMonth; d++) {
     const date = `${month}-${String(d).padStart(2, "0")}`;
-    const dayOrders = orders.filter((o) => o.delivery_date === date && !["cancelled", "refunded", "expired"].includes(o.status));
+    const dayOrders = orders.filter(
+      (order) => order.delivery_date === date && !["cancelled", "refunded", "expired"].includes(order.status),
+    );
     cells.push({
       date,
       inMonth: true,
       orders: dayOrders.length,
-      paid: dayOrders.filter((o) => o.payment_status === "paid").length,
-      blocked: blocks.some((b) => b.date === date && b.window_id === null),
+      paid: dayOrders.filter((order) => order.payment_status === "paid").length,
+      blocked: blocks.some((block) => block.date === date && block.window_id === null && !block.band),
       weekend: !isWeekday(date),
-      capacityUsed: dayOrders.length,
+      capacityUsed: Math.round(dayOrders.reduce((sum, order) => sum + (order.space_units || 0), 0) * 100) / 100,
     });
   }
   while (cells.length % 7 !== 0) {
@@ -355,3 +395,5 @@ export function adminCalendarMonth(month: string, orders: OrderRow[], blocks: Bl
   }
   return { month, cells };
 }
+
+export { bandById };

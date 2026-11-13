@@ -66,7 +66,8 @@ import {
   verifyStripeWebhook,
   type CheckoutSession,
 } from "./stripe";
-import { addDays, formatLongDate, todayLondon, windowById } from "./time";
+import { TRUCK_UNITS_PER_DAY, addDays, formatLongDate, todayLondon, windowById } from "./time";
+import { DELIVERY_ZONES } from "./zones";
 import {
   maybeSendMorningReminders,
   remindersOverview,
@@ -213,6 +214,7 @@ app.get("/api/bootstrap", async (c) => {
     category: p.category,
     image: p.image,
     maxQty: p.max_qty,
+    spaceUnits: p.space_units,
     addonOnly: Boolean(p.addon_only),
     requiresFirewood: Boolean(p.requires_firewood),
     note: p.note,
@@ -227,12 +229,19 @@ app.get("/api/bootstrap", async (c) => {
       address: BUSINESS.address,
       radiusMiles: BUSINESS.radiusMiles,
       postcodePrefixes: BUSINESS.deliveryPrefixes,
+      zones: DELIVERY_ZONES.map((zone) => ({
+        id: zone.id,
+        name: zone.name,
+        dayLabel: zone.dayLabel,
+        districts: zone.districts,
+      })),
       calendarName: settings.google_calendar_name || BUSINESS.defaultCalendarName,
     },
     products,
     delivery: {
       feePence: DELIVERY_FEE_PENCE,
       freeOverPence: FREE_DELIVERY_THRESHOLD_PENCE,
+      truckUnits: TRUCK_UNITS_PER_DAY,
     },
     stripe: {
       mode: stripe.mode,
@@ -484,7 +493,7 @@ adminApi.get("/orders", async (c) => {
   }
   const sql = `SELECT o.*, (SELECT GROUP_CONCAT(i.name || ' ×' || i.qty, ', ') FROM order_items i WHERE i.order_id = o.id) AS items_summary
     FROM orders o WHERE ${conditions.join(" AND ")}
-    ORDER BY o.delivery_date ASC, o.window_id ASC LIMIT 250`;
+    ORDER BY o.delivery_date ASC, CASE o.band WHEN 'morning' THEN 0 WHEN 'afternoon' THEN 1 ELSE o.window_id END, o.created_at LIMIT 250`;
   const rows = await c.env.DB.prepare(sql)
     .bind(...params)
     .all<OrderRow & { items_summary: string }>();
@@ -581,11 +590,11 @@ adminApi.get("/schedule", async (c) => {
   const date = c.req.query("date") || todayLondon();
   const orders = await c.env.DB.prepare(
     `SELECT o.*, (SELECT GROUP_CONCAT(i.name || ' ×' || i.qty, ', ') FROM order_items i WHERE i.order_id = o.id) AS items_summary
-     FROM orders o WHERE o.delivery_date = ? AND o.status NOT IN ('expired','abandoned') ORDER BY o.window_id ASC`,
+     FROM orders o WHERE o.delivery_date = ? AND o.status NOT IN ('expired','abandoned') ORDER BY CASE o.band WHEN 'morning' THEN 0 WHEN 'afternoon' THEN 1 ELSE o.window_id END, o.created_at`,
   )
     .bind(date)
     .all<OrderRow & { items_summary: string }>();
-  const blocks = await c.env.DB.prepare("SELECT * FROM blocks WHERE date = ? ORDER BY window_id").bind(date).all<BlockRow>();
+  const blocks = await c.env.DB.prepare("SELECT * FROM blocks WHERE date = ? ORDER BY band, window_id").bind(date).all<BlockRow>();
   const availability = await computeAvailability(c.env, c.env.DB, {
     from: date,
     days: 1,
@@ -608,7 +617,7 @@ adminApi.get("/calendar", async (c) => {
     : todayLondon().slice(0, 7);
   const [orders, blocks] = await Promise.all([
     c.env.DB.prepare(
-      "SELECT * FROM orders WHERE delivery_date LIKE ? AND status NOT IN ('expired','abandoned') ORDER BY delivery_date, window_id",
+      "SELECT * FROM orders WHERE delivery_date LIKE ? AND status NOT IN ('expired','abandoned') ORDER BY delivery_date, band, window_id",
     )
       .bind(`${month}-%`)
       .all<OrderRow>(),
@@ -630,7 +639,7 @@ adminApi.get("/availability", async (c) => {
 adminApi.get("/blocks", async (c) => {
   const from = c.req.query("from") || todayLondon();
   const to = c.req.query("to") || addDays(from, 90);
-  const rows = await c.env.DB.prepare("SELECT * FROM blocks WHERE date >= ? AND date <= ? ORDER BY date, window_id")
+  const rows = await c.env.DB.prepare("SELECT * FROM blocks WHERE date >= ? AND date <= ? ORDER BY date, band, window_id")
     .bind(from, to)
     .all<BlockRow>();
   return c.json({ blocks: rows.results ?? [] });
@@ -640,12 +649,19 @@ adminApi.post("/blocks", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const date = String(body.date || "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("Choose a valid date.");
-  const wholeDay = body.windowId === null || body.windowId === undefined || body.windowId === "";
-  const windowId = wholeDay ? null : Number(body.windowId);
-  if (windowId !== null && !windowById(windowId)) throw new ValidationError("Choose a valid delivery window.");
-  const capacity = wholeDay ? 0 : Number(body.capacity);
+  const bandRaw = body.band;
+  const band = bandRaw === "morning" || bandRaw === "afternoon" ? bandRaw : "";
+  if (bandRaw && !band) throw new ValidationError("Choose morning or afternoon.");
+  const legacyWindow =
+    body.windowId === null || body.windowId === undefined || body.windowId === ""
+      ? null
+      : Number(body.windowId);
+  if (legacyWindow !== null && !windowById(legacyWindow)) {
+    throw new ValidationError("Choose a valid delivery window.");
+  }
+  const wholeDay = !band && legacyWindow === null;
+  const capacity = band ? 0 : wholeDay ? 0 : Number(body.capacity);
   if (![0, 1, 2].includes(capacity)) throw new ValidationError("Capacity must be 0, 1 or 2.");
-  if (wholeDay && capacity !== 0) throw new ValidationError("A closed day has no delivery capacity.");
   const note = typeof body.note === "string" ? body.note.trim().slice(0, 200) : "";
 
   const paid = await c.env.DB.prepare(
@@ -666,7 +682,7 @@ adminApi.post("/blocks", async (c) => {
     );
   }
 
-  if (windowId === null) {
+  if (wholeDay) {
     const existing = await c.env.DB.prepare("SELECT * FROM blocks WHERE date = ?").bind(date).all<BlockRow>();
     for (const old of existing.results ?? []) {
       if (old.calendar_event_id) {
@@ -678,9 +694,28 @@ adminApi.post("/blocks", async (c) => {
       }
     }
     await c.env.DB.prepare("DELETE FROM blocks WHERE date = ?").bind(date).run();
+  } else if (band) {
+    const legacyIds = band === "morning" ? [1, 2] : [3, 4];
+    const existing = await c.env.DB.prepare(
+      "SELECT * FROM blocks WHERE date = ? AND (band = ? OR window_id IN (?, ?))",
+    )
+      .bind(date, band, legacyIds[0], legacyIds[1])
+      .all<BlockRow>();
+    for (const old of existing.results ?? []) {
+      if (old.calendar_event_id) {
+        try {
+          await deleteCalendarEvent(c.env, c.env.DB, old.calendar_event_id);
+        } catch {
+          // The database block still applies even if the calendar event could not be removed.
+        }
+      }
+    }
+    await c.env.DB.prepare("DELETE FROM blocks WHERE date = ? AND (band = ? OR window_id IN (?, ?))")
+      .bind(date, band, legacyIds[0], legacyIds[1])
+      .run();
   } else {
     const existing = await c.env.DB.prepare("SELECT * FROM blocks WHERE date = ? AND window_id = ?")
-      .bind(date, windowId)
+      .bind(date, legacyWindow)
       .first<BlockRow>();
     if (existing?.calendar_event_id) {
       try {
@@ -689,22 +724,25 @@ adminApi.post("/blocks", async (c) => {
         // The database block still applies even if the calendar event could not be removed.
       }
     }
-    await c.env.DB.prepare("DELETE FROM blocks WHERE date = ? AND window_id = ?").bind(date, windowId).run();
+    await c.env.DB.prepare("DELETE FROM blocks WHERE date = ? AND window_id = ?")
+      .bind(date, legacyWindow)
+      .run();
   }
 
   const block: BlockRow = {
     id: crypto.randomUUID(),
     date,
-    window_id: windowId,
+    window_id: wholeDay ? null : legacyWindow,
+    band,
     capacity,
     note,
     calendar_event_id: null,
     created_at: new Date().toISOString(),
   };
   await c.env.DB.prepare(
-    "INSERT INTO blocks (id, date, window_id, capacity, note, calendar_event_id, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)",
+    "INSERT INTO blocks (id, date, window_id, band, capacity, note, calendar_event_id, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)",
   )
-    .bind(block.id, block.date, block.window_id, block.capacity, block.note, block.created_at)
+    .bind(block.id, block.date, block.window_id, block.band, block.capacity, block.note, block.created_at)
     .run();
 
   let calendarWarning: string | undefined;

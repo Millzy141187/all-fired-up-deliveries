@@ -1,7 +1,6 @@
 /* All Fired Up — customer ordering flow (test version). */
 
-const STORAGE_KEY = "afu_draft_v2";
-const WINDOW_LABELS = ["09:00 – 11:00", "11:00 – 13:00", "13:00 – 15:00", "15:00 – 17:00"];
+const STORAGE_KEY = "afu_draft_v3";
 
 const state = {
   cart: {},
@@ -97,7 +96,7 @@ function loadDraft() {
     if (parsed && typeof parsed === "object") {
       if (parsed.cart && typeof parsed.cart === "object") state.cart = parsed.cart;
       if (parsed.customer && typeof parsed.customer === "object") state.customer = parsed.customer;
-      if (parsed.slot && parsed.slot.date) state.slot = parsed.slot;
+      if (parsed.slot && parsed.slot.date && parsed.slot.band) state.slot = parsed.slot;
       if (parsed.reservation && parsed.reservation.ref) state.reservation = parsed.reservation;
     }
   } catch { /* ignore */ }
@@ -131,6 +130,14 @@ function subtotal() {
   return cartLines().reduce((sum, line) => sum + line.product.price * line.qty, 0);
 }
 
+function cartUnits() {
+  return Math.round(cartLines().reduce((sum, line) => sum + (line.product.spaceUnits || 0) * line.qty, 0) * 100) / 100;
+}
+
+function formatUnits(value) {
+  return Number(Number(value || 0).toFixed(2)).toString();
+}
+
 function deliveryFee() {
   if (!boot) return 0;
   return subtotal() >= boot.delivery.freeOverPence ? 0 : boot.delivery.feePence;
@@ -141,16 +148,28 @@ function orderTotal() {
 }
 
 function cartIssue() {
+  const limit = boot?.delivery?.truckUnits || 5;
+  const units = cartUnits();
+  if (units > limit) {
+    return `This order needs ${formatUnits(units)} of the ${limit} spaces on one truck load. Please reduce a bag or split the order.`;
+  }
   const issues = cartLines().filter((line) => line.product.requiresFirewood && !hasFirewood());
   if (!issues.length) return "";
   return `${issues.map((i) => i.product.name).join(" and ")} can only be delivered with a firewood order.`;
 }
 
+function zoneForPostcode(postcode) {
+  if (!boot?.business?.zones) return null;
+  const compact = String(postcode || "").toUpperCase().replace(/\s+/g, "");
+  if (compact.length < 5) return null;
+  const outward = compact.slice(0, compact.length - 3).replace(/[A-Z]$/, "");
+  const district = (outward.match(/^([A-Z]{1,2}\d{1,2})$/) || [])[1];
+  if (!district) return null;
+  return boot.business.zones.find((zone) => zone.districts.includes(district)) || null;
+}
+
 function postcodeInArea(postcode) {
-  if (!boot) return false;
-  const clean = String(postcode || "").toUpperCase().replace(/\s+/g, "");
-  const match = clean.match(/^([A-Z]{1,2})\d/);
-  return Boolean(match && boot.business.postcodePrefixes.includes(match[1]));
+  return Boolean(zoneForPostcode(postcode));
 }
 
 function validPostcode(postcode) {
@@ -276,6 +295,7 @@ function summaryHtml({ showButton }) {
       <div class="summary-sub">
         <div class="summary-line"><span>Subtotal</span><span>${money(subtotal())}</span></div>
         <div class="summary-line"><span>Delivery${delivery === 0 ? " (free)" : ""}</span><span>${delivery === 0 ? "£0.00" : money(delivery)}</span></div>
+        <div class="summary-line"><span>Truck space</span><span>${formatUnits(cartUnits())} of ${boot.delivery.truckUnits}</span></div>
       </div>
       <dl class="summary-total"><dt>Total</dt><dd>${money(orderTotal())}</dd></dl>
       <p class="summary-note">Placeholder test prices. Free local delivery on orders over ${money(boot.delivery.freeOverPence)}.</p>
@@ -302,9 +322,9 @@ function renderSummaries() {
 /* ---------- Routing & steps ---------- */
 
 const STEP_META = {
-  order: { title: "Your order", subtitle: "Build your order, then choose a delivery slot." },
+  order: { title: "Your order", subtitle: "Build your order, then choose your delivery day." },
   delivery: { title: "Delivery details", subtitle: "Tell us where the logs are going." },
-  slot: { title: "Choose your delivery slot", subtitle: "Two-hour windows, Monday to Friday." },
+  slot: { title: "Choose your delivery day", subtitle: "Your area has a set weekday round, with a morning or afternoon promise." },
   review: { title: "Review and pay", subtitle: "One last look before the test payment." },
 };
 
@@ -342,7 +362,7 @@ function renderStepper(step) {
   const order = ["order", "delivery", "slot", "review"];
   const current = order.indexOf(step);
   $("#steps").innerHTML = order.map((key, index) => {
-    const label = ["Your order", "Delivery details", "Delivery slot", "Review & pay"][index];
+    const label = ["Your order", "Delivery details", "Delivery day", "Review & pay"][index];
     const cls = index === current ? "active" : index < current ? "done" : "";
     return `<li class="${cls}"><span class="n">${index < current ? "✓" : index + 1}</span><span class="label">${label}</span></li>`;
   }).join("");
@@ -395,7 +415,7 @@ function renderDeliveryStep(container) {
   container.innerHTML = `
     <div class="panel">
       <h2>Where shall we deliver?</h2>
-      <p class="panel-intro">We deliver Monday to Friday within roughly 20 miles of Dereham. This test version accepts postcodes beginning NR, IP, PE or CB.</p>
+      <p class="panel-intro">We deliver on set weekday rounds around Dereham, Norwich, Ipswich, King's Lynn and Cambridge. Enter your postcode and we will show your round day.</p>
       <form id="delivery-form" novalidate>
         <div class="form-grid">
           <div class="field full" data-field="name">
@@ -444,7 +464,7 @@ function renderDeliveryStep(container) {
         </div>
         <div class="panel-actions">
           <button class="btn btn-outline" type="button" id="delivery-back">← Back to order</button>
-          <button class="btn" type="submit">Choose a delivery slot →</button>
+          <button class="btn" type="submit">Choose a delivery day →</button>
         </div>
       </form>
     </div>`;
@@ -512,15 +532,15 @@ function showAreaMessage(postcode, markError) {
     if (markError) setFieldError("postcode", "Enter a valid UK postcode.");
     return;
   }
-  if (!postcodeInArea(value)) {
+  const zone = zoneForPostcode(value);
+  if (!zone) {
     el.className = "area-message bad";
-    el.textContent = `We do not deliver to ${value.toUpperCase()} in this test version. We cover sample postcodes beginning NR, IP, PE and CB.`;
-    if (markError) setFieldError("postcode", "This postcode is outside our sample delivery area.");
+    el.textContent = `We do not have a regular delivery round for ${value.toUpperCase()} yet. Please call us and we will see what we can arrange.`;
+    if (markError) setFieldError("postcode", "This postcode is not on one of our delivery rounds.");
     return;
   }
-  const prefix = value.toUpperCase().replace(/\s+/g, "").match(/^([A-Z]{1,2})\d/)?.[1] || "";
   el.className = "area-message ok";
-  el.textContent = `Good news — ${prefix} is in our sample delivery area. Final delivery availability will be confirmed after you book.`;
+  el.textContent = `Good news — ${zone.name} is on our ${zone.dayLabel} round. You will choose a morning or afternoon delivery for that day.`;
   setFieldError("postcode", "");
 }
 
@@ -534,7 +554,7 @@ function validateCustomer() {
   if (!c.address1 || c.address1.trim().length < 3) errors.address1 = "Please enter the first line of the address.";
   if (!c.city || c.city.trim().length < 2) errors.city = "Please enter the town or city.";
   if (!validPostcode(c.postcode)) errors.postcode = "Please enter a valid UK postcode.";
-  else if (!postcodeInArea(c.postcode)) errors.postcode = "This postcode is outside our sample delivery area (NR, IP, PE, CB).";
+  else if (!postcodeInArea(c.postcode)) errors.postcode = "This postcode is not on one of our delivery rounds.";
 
   ["name", "email", "phone", "address1", "city", "postcode"].forEach((key) => {
     setFieldError(key, errors[key] || "");
@@ -546,10 +566,13 @@ function validateCustomer() {
 /* ---------- Step: slot ---------- */
 
 async function renderSlotStep(container) {
+  const zone = zoneForPostcode(state.customer.postcode);
+  const zoneText = zone ? `${zone.name} on ${zone.dayLabel}s` : "your area on its round day";
+  const loadLimit = boot?.delivery?.truckUnits || 5;
   container.innerHTML = `
     <div class="panel">
-      <h2>Choose a delivery window</h2>
-      <p class="panel-intro">Deliveries run Monday to Friday. We need at least 24 hours' notice, and each window has two spaces.</p>
+      <h2>Choose your delivery day</h2>
+      <p class="panel-intro">We deliver to ${esc(zoneText)}. We need at least 24 hours' notice, and one truck load holds ${loadLimit} spaces. Choose a day, then morning or afternoon.</p>
       <div style="display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.85rem;padding:10px 0 20px">
         <span class="spinner"></span> Checking live availability…
       </div>
@@ -565,7 +588,7 @@ async function renderSlotStep(container) {
   } catch (err) {
     container.innerHTML = `
       <div class="panel">
-        <h2>Choose a delivery window</h2>
+        <h2>Choose your delivery day</h2>
         <div class="notice warn">${esc(err.message || "Availability could not be loaded.")}</div>
         <div class="panel-actions">
           <button class="btn btn-outline" type="button" id="slot-back">← Back to details</button>
@@ -584,13 +607,13 @@ async function renderSlotStep(container) {
       ? `<div class="calendar-banner off"><span class="dot"></span> The live calendar could not be checked just now. Availability is shown from our internal schedule — please call if you are unsure.</div>`
       : `<div class="calendar-banner off"><span class="dot"></span> Google Calendar is not connected yet. Availability is shown from the internal delivery schedule for this test.</div>`;
 
-  const days = availability.days;
+  const days = (availability.days || []).filter((day) => !zone || day.zoneId === zone.id);
   const selected = state.slot;
 
   container.innerHTML = `
     <div class="panel">
-      <h2>Choose a delivery window</h2>
-      <p class="panel-intro">We need at least 24 hours' notice. Your chosen slot is held for 15 minutes while you pay.</p>
+      <h2>Choose your delivery day</h2>
+      <p class="panel-intro">We need at least 24 hours' notice. Your truck space is held for 15 minutes while you pay, and we confirm a narrower arrival time before the day.</p>
       ${banner}
       <div class="legend">
         <span><i class="av"></i> Available</span>
@@ -603,11 +626,11 @@ async function renderSlotStep(container) {
       <div class="panel-actions">
         <button class="btn btn-outline" type="button" id="slot-back">← Back to details</button>
         <button class="btn" type="button" id="slot-continue" ${selected ? "" : "disabled"}>
-          ${selected ? "Review order →" : "Select a window →"}
+          ${selected ? "Review order →" : "Select a day →"}
         </button>
       </div>
       <p style="font-size:.73rem;color:var(--muted);margin-top:12px">
-        Availability combines paid orders, active 15-minute holds, blocked dates and busy time in our Google delivery calendar.
+        Availability combines paid orders, active 15-minute holds, truck space, blocked days and busy time in our Google delivery calendar.
       </p>
     </div>`;
 
@@ -616,11 +639,11 @@ async function renderSlotStep(container) {
     const button = event.target.closest("[data-slot]");
     if (!button || button.disabled) return;
     const date = button.dataset.date;
-    const windowId = Number(button.dataset.window);
-    state.slot = { date, windowId, label: button.dataset.label };
+    const band = button.dataset.band;
+    state.slot = { date, band, label: button.dataset.label };
     saveDraft();
     for (const el of $$(".slot", $("#day-list"))) {
-      const isMatch = el.dataset.date === date && Number(el.dataset.window) === windowId;
+      const isMatch = el.dataset.date === date && el.dataset.band === band;
       el.classList.toggle("selected", isMatch);
       el.setAttribute("aria-pressed", isMatch ? "true" : "false");
     }
@@ -630,7 +653,7 @@ async function renderSlotStep(container) {
   });
 
   $("#slot-continue").addEventListener("click", async () => {
-    if (!state.slot) { toast("Choose a delivery window first."); return; }
+    if (!state.slot) { toast("Choose a delivery day first."); return; }
     if (saving) return;
     saving = true;
     const button = $("#slot-continue");
@@ -641,7 +664,7 @@ async function renderSlotStep(container) {
       const payload = {
         items: cartLines().map((line) => ({ id: line.product.id, qty: line.qty })),
         customer: state.customer,
-        delivery: { date: state.slot.date, windowId: state.slot.windowId },
+        delivery: { date: state.slot.date, band: state.slot.band },
       };
       const data = await api("/api/reservations", { method: "POST", body: payload });
       state.reservation = {
@@ -670,12 +693,12 @@ async function renderSlotStep(container) {
 }
 
 function renderDay(day, selected) {
-  const openWindows = day.windows.filter((w) => w.state === "available").length;
+  const openBands = day.bands.filter((band) => band.state === "available").length;
   const meta = day.closed
     ? "Closed"
-    : openWindows === 0
+    : openBands === 0
       ? `<span class="day-meta full">Fully booked</span>`
-      : `<span class="day-meta">${day.booked} of ${availability.rules.maxPerDay} spaces booked</span>`;
+      : `<span class="day-meta">${formatUnits(day.unitsLeft)} of ${day.unitsTotal} truck spaces left</span>`;
 
   if (day.closed) {
     return `
@@ -687,21 +710,27 @@ function renderDay(day, selected) {
 
   return `
     <div class="day-card">
-      <div class="day-head"><strong>${esc(day.label)}</strong>${meta}</div>
+      <div class="day-head">
+        <div><strong>${esc(day.label)}</strong><span class="day-zone">${esc(day.zoneName)} round</span></div>
+        ${meta}
+      </div>
       <div class="slot-grid">
-        ${day.windows.map((win) => {
-          const isSelected = selected && selected.date === day.date && Number(selected.windowId) === win.id;
+        ${day.bands.map((band) => {
+          const isSelected = selected && selected.date === day.date && selected.band === band.id;
+          const needed = cartUnits();
+          const shortOfSpace = band.state === "available" && day.unitsLeft < needed;
           let status = "";
-          if (win.state === "available") status = `${win.remaining} ${win.remaining === 1 ? "space" : "spaces"} left`;
-          else if (win.state === "full" || win.state === "busy") status = "Fully booked";
-          else if (win.state === "blocked") status = "Unavailable";
-          else status = "Unavailable";
-          const disabled = win.state !== "available";
+          if (band.state === "available") status = shortOfSpace ? `Only ${formatUnits(day.unitsLeft)} spaces left` : "Available";
+          else if (band.state === "full") status = "Truck full";
+          else if (band.state === "busy") status = "Fully booked";
+          else if (band.state === "past") status = "Too soon";
+          else status = "Closed";
+          const disabled = band.state !== "available" || shortOfSpace;
           return `
-            <button type="button" class="slot ${win.state} ${isSelected ? "selected" : ""}"
-              data-slot data-date="${esc(day.date)}" data-window="${win.id}" data-label="${esc(win.label)}"
+            <button type="button" class="slot ${band.state} ${isSelected ? "selected" : ""}"
+              data-slot data-date="${esc(day.date)}" data-band="${esc(band.id)}" data-label="${esc(band.label)}"
               ${disabled ? "disabled" : ""} aria-pressed="${isSelected ? "true" : "false"}">
-              <span>${esc(win.label)}</span><span>${esc(status)}</span>
+              <span>${esc(band.label)}</span><span>${esc(status)}</span>
             </button>`;
         }).join("")}
       </div>
@@ -755,11 +784,11 @@ function renderReviewStep(container) {
 
       <div class="review-block">
         <div class="review-block-head">
-          <h3>Delivery window</h3>
+          <h3>Delivery day</h3>
           <button class="btn-link" type="button" id="edit-slot">Change</button>
         </div>
         <p><strong>${longDate(order.deliveryDate)}</strong>, ${esc(order.deliveryWindow)}</p>
-        <p style="font-size:.78rem;color:var(--muted);margin-top:3px">We will confirm the exact arrival by phone if needed.</p>
+        <p style="font-size:.78rem;color:var(--muted);margin-top:3px">We will text or call with a narrower arrival window before the day.</p>
       </div>
 
       <div class="pay-banner">
@@ -836,7 +865,7 @@ function startCountdown(expiresAt) {
         pay.textContent = "Slot hold expired";
       }
       clearInterval(countdownTimer);
-      toast("Your 15-minute hold has expired. Please choose a slot again.", "error");
+      toast("Your 15-minute hold has expired. Please choose a delivery day again.", "error");
       return;
     }
     const mins = Math.floor(remaining / 60000);
@@ -883,10 +912,10 @@ function updateMobileBar(step) {
 
   if (step === "delivery") {
     $("#mobile-label").textContent = "Delivery details";
-    $("#mobile-action").textContent = "Choose a slot";
+    $("#mobile-action").textContent = "Choose a day";
   } else if (step === "slot") {
     $("#mobile-label").textContent = "Order total";
-    $("#mobile-action").textContent = state.slot ? "Review order" : "Select a slot";
+    $("#mobile-action").textContent = state.slot ? "Review order" : "Select a day";
   }
 }
 
@@ -902,7 +931,7 @@ function mobileAction() {
   } else if (route === "slot") {
     if (!state.slot) {
       $("#day-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      toast("Choose a delivery window first.");
+      toast("Choose a delivery day first.");
       return;
     }
     $("#slot-continue")?.click();
