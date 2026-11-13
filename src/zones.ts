@@ -9,7 +9,10 @@ export interface DeliveryZone {
   dayLabel: string;
   weekdays: number[];
   districts: string[];
-  /** Approximate driving distance from the yard, not a straight line. */
+  /**
+   * Driving distance from the yard (NR19 2LA) to the round's main town
+   * centre, measured by road rather than as the crow flies.
+   */
   roadMiles: number;
 }
 
@@ -24,7 +27,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     dayLabel: "Monday",
     weekdays: [1],
     districts: ["NR17", "NR19", "NR20"],
-    roadMiles: 5,
+    roadMiles: 4,
   },
   {
     id: "norwich",
@@ -56,7 +59,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     dayLabel: "Friday",
     weekdays: [5],
     districts: districtRange("CB", 1, 5),
-    roadMiles: 58,
+    roadMiles: 57,
   },
 ];
 
