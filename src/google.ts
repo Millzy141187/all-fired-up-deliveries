@@ -406,9 +406,21 @@ export async function createDeliveryEvent(
   if (!cfg.refreshToken) throw new GoogleError("Google Calendar is not connected.", 400);
   const band = bandById(order.band);
   const win = band ? null : windowById(order.window_id);
-  if (!band && !win) throw new GoogleError("Unknown delivery window.", 400);
-  const startTime = band ? band.start : win!.start;
-  const endTime = band ? band.end : win!.end;
+  const timing = band
+    ? {
+        start: { dateTime: `${order.delivery_date}T${band.start}:00`, timeZone: "Europe/London" },
+        end: { dateTime: `${order.delivery_date}T${band.end}:00`, timeZone: "Europe/London" },
+      }
+    : win
+      ? {
+          start: { dateTime: `${order.delivery_date}T${win.start}:00`, timeZone: "Europe/London" },
+          end: { dateTime: `${order.delivery_date}T${win.end}:00`, timeZone: "Europe/London" },
+        }
+      : {
+          // Day-only booking: show the delivery as an all-day calendar entry.
+          start: { date: order.delivery_date },
+          end: { date: addDays(order.delivery_date, 1) },
+        };
 
   const description = [
     `Customer: ${order.customer_name}`,
@@ -428,8 +440,7 @@ export async function createDeliveryEvent(
   const body = {
     summary: `Delivery: ${order.customer_name} — ${summary}`,
     description,
-    start: { dateTime: `${order.delivery_date}T${startTime}:00`, timeZone: "Europe/London" },
-    end: { dateTime: `${order.delivery_date}T${endTime}:00`, timeZone: "Europe/London" },
+    ...timing,
     transparency: "opaque",
     status: "confirmed",
     colorId: "6",

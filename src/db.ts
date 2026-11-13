@@ -1,7 +1,7 @@
 import { hashPassword, randomHex, newOrderRef, newToken } from "./crypto";
 import { addDays, isWeekday, nextWeekdays, todayLondon, windowById } from "./time";
 import { zoneForDate, zoneForPostcode, type DeliveryZone } from "./zones";
-import { DELIVERY_BANDS } from "./time";
+
 
 export interface Env {
   DB: D1Database;
@@ -398,7 +398,7 @@ async function initialise(db: D1Database): Promise<void> {
     const ready = await db
       .prepare("SELECT value FROM settings WHERE key = 'schema_version'")
       .first<{ value: string }>();
-    if (ready?.value === "5") return;
+    if (ready?.value === "6") return;
   } catch {
     // A fresh D1 database has no settings table yet.
   }
@@ -489,12 +489,11 @@ async function initialise(db: D1Database): Promise<void> {
     }
   }
 
+  // Day-only bookings: upcoming orders no longer carry a morning/afternoon
+  // band. Past orders keep their original wording as history.
   await db
     .prepare(
-      `UPDATE orders SET window_label = CASE band
-         WHEN 'morning' THEN 'Morning (09:00 – 13:00)'
-         WHEN 'afternoon' THEN 'Afternoon (13:00 – 17:00)'
-         ELSE window_label END
+      `UPDATE orders SET band = '', window_label = '', window_id = 0
        WHERE delivery_date >= ? AND status NOT IN ('cancelled','refunded')`,
     )
     .bind(todayLondon())
@@ -578,7 +577,7 @@ async function initialise(db: D1Database): Promise<void> {
   if (capacityStatements.length) await db.batch(capacityStatements);
 
   // Written last so a partially completed first boot is retried.
-  await setSetting(db, "schema_version", "5");
+  await setSetting(db, "schema_version", "6");
 }
 
 export async function getSetting(db: D1Database, key: string): Promise<string | null> {
@@ -785,8 +784,6 @@ async function seedSampleOrders(db: D1Database): Promise<void> {
     const deliveryDate =
       sample.status === "delivered" || !zone ? sample.date : nextMatchingDate(sample.date, zone);
     if (!isWeekday(deliveryDate)) continue;
-    const band = sample.windowId <= 2 ? "morning" : "afternoon";
-    const bandLabel = DELIVERY_BANDS.find((item) => item.id === band)?.label || window.label;
     const spaceUnits = sample.items.reduce((sum, item) => {
       const product = products.get(item.id);
       return sum + (product ? product.space_units * item.qty : 0);
@@ -822,9 +819,9 @@ async function seedSampleOrders(db: D1Database): Promise<void> {
           sample.postcode,
           sample.notes,
           deliveryDate,
-          sample.windowId,
-          bandLabel,
-          band,
+          0,
+          "",
+          "",
           zone?.name || "",
           spaceUnits,
           subtotal,

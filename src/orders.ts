@@ -13,12 +13,9 @@ import {
 } from "./db";
 import {
   acquireCapacity,
-  acquireDayLock,
-  acquireSlotLock,
-  getSlotState,
+  getDayState,
   makeOrderLocksPermanent,
   orderHasCapacity,
-  orderHasSlotLock,
   releaseOrderLocks,
 } from "./availability";
 import { zoneForDate, zoneForPostcode } from "./zones";
@@ -41,12 +38,9 @@ import {
 import {
   RESERVATION_MINUTES,
   TRUCK_UNITS_PER_DAY,
-  bandById,
   isWeekday,
-  meetsNoticeBand,
+  meetsNoticeDay,
   todayLondon,
-  windowById,
-  type DeliveryBandId,
 } from "./time";
 import { constantTimeEqual, newOrderId, newOrderRef, newToken } from "./crypto";
 
@@ -78,7 +72,7 @@ export interface CheckoutPayload {
     postcode?: string;
     notes?: string;
   };
-  delivery?: { date?: string; band?: string; windowId?: number };
+  delivery?: { date?: string };
 }
 
 interface LineItem {
@@ -179,17 +173,6 @@ export async function buildReservation(
   }
 
   const date = clean(payload.delivery?.date, 10);
-  const rawBand = payload.delivery?.band;
-  const legacyWindow = Math.floor(Number(payload.delivery?.windowId));
-  const bandId: DeliveryBandId | null =
-    rawBand === "morning" || rawBand === "afternoon"
-      ? rawBand
-      : legacyWindow === 1 || legacyWindow === 2
-        ? "morning"
-        : legacyWindow === 3 || legacyWindow === 4
-          ? "afternoon"
-          : null;
-  const band = bandId ? bandById(bandId) : null;
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("Please choose a delivery date.");
   if (!isWeekday(date)) throw new ValidationError("Deliveries are available Monday to Friday only.", 409);
   if (date < todayLondon()) throw new ValidationError("That delivery date is in the past.", 409);
@@ -202,8 +185,7 @@ export async function buildReservation(
       "WRONG_ZONE",
     );
   }
-  if (!bandId || !band) throw new ValidationError("Please choose morning or afternoon.");
-  if (!meetsNoticeBand(date, bandId)) {
+  if (!meetsNoticeDay(date)) {
     throw new ValidationError(
       "Delivery dates must be at least 24 hours away. Please choose a later date.",
       409,
@@ -211,19 +193,19 @@ export async function buildReservation(
     );
   }
 
-  const slotCheck = await getSlotState(env, db, date, bandId);
-  if (!slotCheck.slot || slotCheck.slot.state !== "available") {
+  const dayCheck = await getDayState(env, db, date);
+  if (dayCheck.state !== "available") {
     throw new ValidationError(
-      slotCheck.slot?.state === "full"
+      dayCheck.state === "full"
         ? "That day's truck is now full. Please choose another date."
         : "That delivery date is no longer available. Please choose another.",
       409,
       "SLOT_UNAVAILABLE",
     );
   }
-  if (slotCheck.day.unitsLeft < units) {
+  if (dayCheck.unitsLeft < units) {
     throw new ValidationError(
-      `Only ${slotCheck.day.unitsLeft} of the ${TRUCK_UNITS_PER_DAY} truck spaces are left on that day. Please reduce the order or choose another date.`,
+      `Only ${dayCheck.unitsLeft} of the ${TRUCK_UNITS_PER_DAY} truck spaces are left on that day. Please reduce the order or choose another date.`,
       409,
       "SLOT_UNAVAILABLE",
     );
@@ -255,8 +237,8 @@ export async function buildReservation(
     notes,
     delivery_date: date,
     window_id: 0,
-    window_label: band.label,
-    band: bandId,
+    window_label: "",
+    band: "",
     zone: zone.name,
     space_units: units,
     subtotal_pence: subtotal,
@@ -297,8 +279,8 @@ export async function buildReservation(
         notes,
         date,
         0,
-        band.label,
-        bandId,
+        "",
+        "",
         zone.name,
         units,
         subtotal,
@@ -327,20 +309,6 @@ export async function buildReservation(
   }
 
   return { order, items: lines };
-}
-
-async function windowCapacity(db: D1Database, date: string, windowId: number): Promise<number> {
-  const block = await db
-    .prepare("SELECT capacity FROM blocks WHERE date = ? AND window_id = ?")
-    .bind(date, windowId)
-    .first<{ capacity: number }>();
-  if (block) return block.capacity;
-  const wholeDay = await db
-    .prepare("SELECT capacity FROM blocks WHERE date = ? AND window_id IS NULL")
-    .bind(date)
-    .first<{ capacity: number }>();
-  if (wholeDay) return 0;
-  return 2;
 }
 
 async function discardReservation(db: D1Database, orderId: string): Promise<void> {
@@ -497,37 +465,17 @@ export async function finalizePaidOrder(
   const nowIso = new Date().toISOString();
   let calendarError: string | null = null;
 
-  if (order.band) {
-    if (!(await orderHasCapacity(db, order.id))) {
-      const spaceOk = await acquireCapacity(
-        db,
-        order.delivery_date,
-        order.space_units || 0,
-        order.id,
-        null,
-      );
-      if (!spaceOk) {
-        calendarError =
-          "Payment received after the truck space hold expired and the day was full. The order needs manual attention.";
-      }
-    }
-  } else if (!(await orderHasSlotLock(db, order.id))) {
-    const win = windowById(order.window_id);
-    const dayOk = await acquireDayLock(db, order.delivery_date, order.id, null, Date.now());
-    const slotOk = win
-      ? await acquireSlotLock(
-          db,
-          order.delivery_date,
-          order.window_id,
-          await windowCapacity(db, order.delivery_date, order.window_id),
-          order.id,
-          null,
-          Date.now(),
-        )
-      : false;
-    if (!dayOk || !slotOk) {
+  if (!(await orderHasCapacity(db, order.id))) {
+    const spaceOk = await acquireCapacity(
+      db,
+      order.delivery_date,
+      order.space_units || 0,
+      order.id,
+      null,
+    );
+    if (!spaceOk) {
       calendarError =
-        "Payment received after the slot hold expired and the slot was no longer free. The order needs manual attention.";
+        "Payment received after the truck space hold expired and the day was full. The order needs manual attention.";
     }
   }
   await makeOrderLocksPermanent(db, order.id);

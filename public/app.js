@@ -96,7 +96,7 @@ function loadDraft() {
     if (parsed && typeof parsed === "object") {
       if (parsed.cart && typeof parsed.cart === "object") state.cart = parsed.cart;
       if (parsed.customer && typeof parsed.customer === "object") state.customer = parsed.customer;
-      if (parsed.slot && parsed.slot.date && parsed.slot.band) state.slot = parsed.slot;
+      if (parsed.slot && parsed.slot.date) state.slot = { date: parsed.slot.date };
       if (parsed.reservation && parsed.reservation.ref) state.reservation = parsed.reservation;
     }
   } catch { /* ignore */ }
@@ -324,7 +324,7 @@ function renderSummaries() {
 const STEP_META = {
   order: { title: "Your order", subtitle: "Build your order, then choose your delivery day." },
   delivery: { title: "Delivery details", subtitle: "Tell us where the logs are going." },
-  slot: { title: "Choose your delivery day", subtitle: "Your area has a set weekday round, with a morning or afternoon promise." },
+  slot: { title: "Choose your delivery day", subtitle: "Your area has one weekday round. Choose the date that suits you." },
   review: { title: "Review and pay", subtitle: "One last look before the test payment." },
 };
 
@@ -540,7 +540,7 @@ function showAreaMessage(postcode, markError) {
     return;
   }
   el.className = "area-message ok";
-  el.textContent = `Good news — ${zone.name} is on our ${zone.dayLabel} round, about ${zone.roadMiles} road miles from the yard. You will choose a morning or afternoon delivery for that day.`;
+  el.textContent = `Good news — ${zone.name} is on our ${zone.dayLabel} round, about ${zone.roadMiles} road miles from the yard. You will choose one of these dates at checkout.`;
   setFieldError("postcode", "");
 }
 
@@ -572,7 +572,7 @@ async function renderSlotStep(container) {
   container.innerHTML = `
     <div class="panel">
       <h2>Choose your delivery day</h2>
-      <p class="panel-intro">We deliver to ${esc(zoneText)}. We need at least 24 hours' notice, and one truck load holds ${loadLimit} spaces. Choose a day, then morning or afternoon.</p>
+      <p class="panel-intro">We deliver to ${esc(zoneText)}. We need at least 24 hours' notice, and one truck load holds ${loadLimit} spaces. Choose the date that suits you.</p>
       <div style="display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.85rem;padding:10px 0 20px">
         <span class="spinner"></span> Checking live availability…
       </div>
@@ -613,7 +613,7 @@ async function renderSlotStep(container) {
   container.innerHTML = `
     <div class="panel">
       <h2>Choose your delivery day</h2>
-      <p class="panel-intro">We need at least 24 hours' notice. Your truck space is held for 15 minutes while you pay, and we confirm a narrower arrival time before the day.</p>
+      <p class="panel-intro">We need at least 24 hours' notice. Your truck space is held for 15 minutes while you pay, and we text a narrower arrival time before the day.</p>
       ${banner}
       <div class="legend">
         <span><i class="av"></i> Available</span>
@@ -639,11 +639,10 @@ async function renderSlotStep(container) {
     const button = event.target.closest("[data-slot]");
     if (!button || button.disabled) return;
     const date = button.dataset.date;
-    const band = button.dataset.band;
-    state.slot = { date, band, label: button.dataset.label };
+    state.slot = { date };
     saveDraft();
     for (const el of $$(".slot", $("#day-list"))) {
-      const isMatch = el.dataset.date === date && el.dataset.band === band;
+      const isMatch = el.dataset.date === date;
       el.classList.toggle("selected", isMatch);
       el.setAttribute("aria-pressed", isMatch ? "true" : "false");
     }
@@ -664,7 +663,7 @@ async function renderSlotStep(container) {
       const payload = {
         items: cartLines().map((line) => ({ id: line.product.id, qty: line.qty })),
         customer: state.customer,
-        delivery: { date: state.slot.date, band: state.slot.band },
+        delivery: { date: state.slot.date },
       };
       const data = await api("/api/reservations", { method: "POST", body: payload });
       state.reservation = {
@@ -693,13 +692,7 @@ async function renderSlotStep(container) {
 }
 
 function renderDay(day, selected) {
-  const openBands = day.bands.filter((band) => band.state === "available").length;
-  const meta = day.closed
-    ? "Closed"
-    : openBands === 0
-      ? `<span class="day-meta full">Fully booked</span>`
-      : `<span class="day-meta">${formatUnits(day.unitsLeft)} of ${day.unitsTotal} truck spaces left</span>`;
-
+  const isSelected = Boolean(selected && selected.date === day.date);
   if (day.closed) {
     return `
       <div class="day-card closed">
@@ -708,31 +701,28 @@ function renderDay(day, selected) {
       </div>`;
   }
 
+  const needed = cartUnits();
+  const shortOfSpace = day.state === "available" && day.unitsLeft < needed;
+  let status = "Available";
+  if (day.state === "full") status = "Truck full";
+  else if (day.state === "busy") status = "Fully booked";
+  else if (day.state === "past") status = "Too soon";
+  else if (day.state === "blocked") status = "Closed";
+  else if (shortOfSpace) status = `Only ${formatUnits(day.unitsLeft)} spaces left`;
+  const disabled = day.state !== "available" || shortOfSpace;
+
   return `
     <div class="day-card">
       <div class="day-head">
         <div><strong>${esc(day.label)}</strong><span class="day-zone">${esc(day.zoneName)} round</span></div>
-        ${meta}
+        <span class="day-meta">${formatUnits(day.unitsLeft)} of ${day.unitsTotal} truck spaces left</span>
       </div>
       <div class="slot-grid">
-        ${day.bands.map((band) => {
-          const isSelected = selected && selected.date === day.date && selected.band === band.id;
-          const needed = cartUnits();
-          const shortOfSpace = band.state === "available" && day.unitsLeft < needed;
-          let status = "";
-          if (band.state === "available") status = shortOfSpace ? `Only ${formatUnits(day.unitsLeft)} spaces left` : "Available";
-          else if (band.state === "full") status = "Truck full";
-          else if (band.state === "busy") status = "Fully booked";
-          else if (band.state === "past") status = "Too soon";
-          else status = "Closed";
-          const disabled = band.state !== "available" || shortOfSpace;
-          return `
-            <button type="button" class="slot ${band.state} ${isSelected ? "selected" : ""}"
-              data-slot data-date="${esc(day.date)}" data-band="${esc(band.id)}" data-label="${esc(band.label)}"
-              ${disabled ? "disabled" : ""} aria-pressed="${isSelected ? "true" : "false"}">
-              <span>${esc(band.label)}</span><span>${esc(status)}</span>
-            </button>`;
-        }).join("")}
+        <button type="button" class="slot ${day.state} ${isSelected ? "selected" : ""}"
+          data-slot data-date="${esc(day.date)}"
+          ${disabled ? "disabled" : ""} aria-pressed="${isSelected ? "true" : "false"}">
+          <span>Choose this day</span><span>${esc(status)}</span>
+        </button>
       </div>
     </div>`;
 }
@@ -787,8 +777,8 @@ function renderReviewStep(container) {
           <h3>Delivery day</h3>
           <button class="btn-link" type="button" id="edit-slot">Change</button>
         </div>
-        <p><strong>${longDate(order.deliveryDate)}</strong>, ${esc(order.deliveryWindow)}</p>
-        <p style="font-size:.78rem;color:var(--muted);margin-top:3px">We will text or call with a narrower arrival window before the day.</p>
+        <p><strong>${longDate(order.deliveryDate)}</strong></p>
+        <p style="font-size:.78rem;color:var(--muted);margin-top:3px">We will text or call with a narrower arrival time before the day.</p>
       </div>
 
       <div class="pay-banner">

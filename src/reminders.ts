@@ -1,7 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { getSetting, orderItems, setSetting, type Env, type OrderRow } from "./db";
 import { GMAIL_SEND_SCOPE, formatMoney, sendCustomerEmail } from "./google";
-import { nowLondonTime, todayLondon } from "./time";
+import { formatLongDate, nowLondonTime, todayLondon } from "./time";
 
 /** Reminders go out from this London wall-clock time on the delivery day. */
 export const MORNING_REMINDER_TIME = "07:30";
@@ -49,7 +49,8 @@ function reminderEmail(order: OrderRow, items: { name: string; qty: number }[]) 
       "",
       "A quick reminder that your firewood delivery is booked for today.",
       "",
-      `Delivery window: ${order.window_label}`,
+      `Delivery day: ${formatLongDate(order.delivery_date)}`,
+      "We will text or call with a narrower arrival time on the day.",
       `Address: ${address}`,
       `Items: ${contents || "Firewood order"}`,
       `Total: ${formatMoney(order.total_pence)}`,

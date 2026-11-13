@@ -60,7 +60,6 @@ async function init() {
         <div class="review-block-head"><h3>Your order</h3><strong>${money(order.total)}</strong></div>
         <p>${order.items.map((i) => `${i.qty} × ${esc(i.name)}`).join("<br>")}</p>
         <div class="totals" style="margin-top:12px">
-          <div><span>Delivery</span><span>${esc(order.deliveryWindow)}</span></div>
           <div><span>Date</span><span>${longDate(order.deliveryDate)}</span></div>
           <div class="grand"><span>Total</span><span>${money(order.total)}</span></div>
         </div>

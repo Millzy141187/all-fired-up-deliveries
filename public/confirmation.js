@@ -72,7 +72,7 @@ function render(order) {
     ${paid ? `
       <div class="confirm-slot">
         <div class="box"><small>Delivery date</small><strong>${longDate(order.deliveryDate)}</strong></div>
-        <div class="box"><small>Time window</small><strong>${esc(order.deliveryWindow)}</strong></div>
+        <div class="box"><small>Delivery</small><strong>We'll text a time</strong></div>
       </div>
       ${calendarLine}
     ` : `
@@ -102,7 +102,7 @@ function render(order) {
       <div class="detail-block">
         <h4>Payment</h4>
         <p>${paid ? "Paid with Stripe test mode" : "Awaiting confirmation"}</p>
-        <p style="margin-top:7px;font-size:.78rem;color:var(--muted)">Reference ${esc(order.ref)}<br>${esc(order.deliveryWindow)}</p>
+        <p style="margin-top:7px;font-size:.78rem;color:var(--muted)">Reference ${esc(order.ref)}</p>
       </div>
     </div>
 

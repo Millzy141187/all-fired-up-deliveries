@@ -1,9 +1,9 @@
 # All Fired Up — firewood ordering & delivery test app
 
 A working prototype for the full customer journey: choose firewood, enter delivery
-details, pick your area's weekday round and a morning or afternoon promise, pay
-with **Stripe test mode**, and have the confirmed booking appear in the
-**All Fired Up Deliveries** Google Calendar.
+details, pick a date from your area's weekday round, pay with **Stripe test
+mode**, and have the confirmed booking appear in the **All Fired Up Deliveries**
+Google Calendar.
 
 This is original demonstration content. It does not copy the existing All Fired Up
 site's text, images or branding. Product artwork is original placeholder SVG.
@@ -22,8 +22,8 @@ Prices are clearly marked test prices.
   (PE30–38), Friday Cambridge (CB1–5). The date picker only shows the customer's
   own round days. The area is described in road miles from the yard (up to about
   60), not a straight-line radius.
-- Five truck spaces per day, weighted by product volume, with a morning
-  (09:00–13:00) or afternoon (13:00–17:00) promise and 24-hour notice.
+- Five truck spaces per day, weighted by product volume, booked by date only
+  with 24-hour notice. The arrival time is narrowed by text on the day.
 - 15-minute truck-space hold while the customer pays.
 - Stripe Checkout in test mode (or a clearly labelled demo checkout if Stripe is
   not configured yet).
@@ -33,8 +33,8 @@ Prices are clearly marked test prices.
 - Password-protected orders list with search (name, postcode, order ID, date),
   status filter, detail drawer and status changes.
 - Calendar-style month view plus a per-day delivery schedule.
-- Availability manager: close whole days or a single morning/afternoon round,
-  see truck space used per day, add an internal note, remove blocks.
+- Availability manager: close whole delivery days, see truck space used per
+  day, add an internal note, remove blocks.
 - Warning when closing a day that already has paid orders:
   “This day has X paid orders. Please contact customers to rearrange.”
   Paid orders are never deleted or cancelled automatically.
@@ -110,7 +110,7 @@ the app:
 
 Events created for orders:
 - Title: `Delivery: [Customer Name] — [Order Summary]`
-- Correct delivery date and morning/afternoon band, `Europe/London`
+- All-day entry on the delivery date
 - Transparency: **Busy** (blocks the window)
 - Description includes customer name, phone, email, address, postcode, contents,
   delivery notes, total, payment status and order ID
@@ -127,7 +127,7 @@ Blocks create a corresponding **“Blocked — no deliveries”** calendar event
 | Delivery days | Monday–Friday, one area round per weekday |
 | Rounds | Dereham & Swaffham Mon · Norwich Tue · Ipswich Wed · King's Lynn Thu · Cambridge Fri |
 | Delivery area | Up to about 60 road miles from the yard (Dereham 5 · Norwich 19 · King's Lynn 25 · Ipswich 56 · Cambridge 58) |
-| Promise | Morning 09:00–13:00 or afternoon 13:00–17:00 |
+| Booking | Delivery date only; arrival time texted on the day |
 | Truck capacity | 5 dumpy-bag equivalents per day |
 | Product space | Dumpy bag 1 · 20 nets 1 · 2m³ loose 3 · 3m³ loose 4.5 · kindling 0.1 · firelighters 0.05 · coal 0.25 |
 | Minimum notice | 24 hours |
@@ -146,8 +146,7 @@ spaces used correctly remains bookable. After the second booking it shows
 
 1. Open the site and add a dumpy bag and kindling.
 2. Enter a name, email, phone and an NR postcode.
-3. Choose one of your area's round days (at least 24 hours ahead) and morning or
-   afternoon.
+3. Choose one of your area's round dates (at least 24 hours ahead).
 4. Review the order — the truck space is held for 15 minutes.
 5. Pay with `4242 4242 4242 4242` in Stripe test mode (or the demo checkout if
    Stripe is not configured).

@@ -12,9 +12,12 @@ const STATUS_LABELS = {
   refunded: "Refunded",
 };
 
-const BAND_LABELS = {
-  morning: "Morning (09:00 – 13:00)",
-  afternoon: "Afternoon (13:00 – 17:00)",
+const DAY_STATE_LABELS = {
+  available: "Open",
+  full: "Truck full",
+  blocked: "Closed",
+  past: "Too soon",
+  busy: "Busy",
 };
 
 function units(value) {
@@ -300,7 +303,7 @@ function bindEvents() {
     }
   });
 
-  for (const selector of ["#block-date", "#block-scope"]) {
+  for (const selector of ["#block-date"]) {
     $(selector).addEventListener("change", () => {
       state.blockAck = false;
       $("#block-warning").hidden = true;
@@ -446,7 +449,7 @@ function renderOrders(orders) {
       </td>
       <td>
         <div>${dateShort(order.delivery_date)}</div>
-        <div class="sub">${esc(order.window_label)}</div>
+        ${order.window_label ? `<div class="sub">${esc(order.window_label)}</div>` : ""}
       </td>
       <td style="max-width:220px"><div class="sub">${esc(order.itemsSummary || "—")}</div></td>
       <td class="money">${money(order.total_pence)}</td>
@@ -497,7 +500,8 @@ function emailTemplate(order, items) {
       "",
       `A quick note about your firewood order ${order.ref}.`,
       "",
-      `Delivery: ${dateLong(order.delivery_date)}, ${order.window_label}`,
+      `Delivery: ${dateLong(order.delivery_date)}`,
+      "We will text or call with a narrower arrival time before the day.",
       `Address: ${address}`,
       `Items: ${contents || "Firewood order"}`,
       `Total: ${money(order.total_pence)}`,
@@ -596,13 +600,13 @@ function renderOrder(data) {
   state.currentEmailFrom = (data.email && data.email.from) || "";
   const facts = `
     <div class="order-facts">
-      <div><small>Delivery</small><strong>${esc(deliveryCountdown(order.delivery_date))}</strong><span>${dateShort(order.delivery_date)} · ${esc(order.window_label)}</span></div>
+      <div><small>Delivery</small><strong>${esc(deliveryCountdown(order.delivery_date))}</strong><span>${dateShort(order.delivery_date)}${order.window_label ? ` · ${esc(order.window_label)}` : ""}</span></div>
       <div><small>Order total</small><strong>${money(order.total_pence)}</strong><span><span class="badge ${esc(order.payment_status)}">${esc(order.payment_status)}</span></span></div>
       <div><small>Placed</small><strong>${dateShort(order.created_at.slice(0, 10))}</strong><span>${esc(dateTimeLabel(order.created_at).split(", ").slice(-1)[0])}</span></div>
       <div><small>Customer history</small><strong>${history.paidOrders ? `${history.paidOrders} paid ${history.paidOrders === 1 ? "order" : "orders"}` : "First order"}</strong><span>${history.lastDelivery ? `Last ${dateShort(history.lastDelivery)}` : "No earlier deliveries"}</span></div>
     </div>`;
   $("#order-title").textContent = order.ref;
-  $("#order-subtitle").textContent = `${dateLong(order.delivery_date)} · ${order.window_label}${order.is_sample ? " · sample order" : ""}`;
+  $("#order-subtitle").textContent = `${dateLong(order.delivery_date)}${order.window_label ? ` · ${order.window_label}` : ""}${order.is_sample ? " · sample order" : ""}`;
   $("#order-calendar").hidden = !(order.payment_status === "paid" && !order.calendar_event_id);
 
   const calendar = order.calendar_event_id
@@ -628,7 +632,7 @@ function renderOrder(data) {
       <div class="detail-block">
         <h4>Delivery address</h4>
         <p>${esc(order.address1)}${order.address2 ? `<br>${esc(order.address2)}` : ""}<br>${esc(order.city)}<br><strong>${esc(order.postcode)}</strong></p>
-        <p style="margin-top:6px">${dateShort(order.delivery_date)} · ${esc(order.window_label)}</p>
+        <p style="margin-top:6px">${dateShort(order.delivery_date)}${order.window_label ? ` · ${esc(order.window_label)}` : ""}</p>
       </div>
     </div>
 
@@ -724,16 +728,15 @@ async function loadDay(date) {
     const windowHtml = day ? `
       <div class="slots" style="margin:4px 0 14px">
         <span class="slot-pill">${esc(day.zoneName)} round · ${units(day.unitsUsed)}/${day.unitsTotal} truck spaces</span>
-        ${day.bands.map((band) => {
-          const label = band.state === "available" ? "Open" : band.reason || "Closed";
-          return `<span class="slot-pill ${band.state === "available" ? "" : "blocked"}">${esc(band.label)} · ${esc(label)}</span>`;
-        }).join("")}
+        <span class="slot-pill ${day.state === "available" ? "" : "blocked"}" title="${esc(day.reason || "")}">
+          ${esc(DAY_STATE_LABELS[day.state] || day.state)}
+        </span>
       </div>` : "";
 
     const blocksHtml = data.blocks.length
       ? `<div style="margin-bottom:12px">${data.blocks.map((block) => `
           <div class="sched-item block">
-            <div><div class="when">${block.band ? esc(BAND_LABELS[block.band]) : block.window_id ? "Delivery window" : "Whole day"}</div>
+            <div><div class="when">Whole day</div>
               <div class="who">Blocked — no deliveries</div></div>
             <div class="what">${esc(block.note || "No internal note")}</div>
           </div>`).join("")}</div>`
@@ -743,7 +746,7 @@ async function loadDay(date) {
       ? data.orders.map((order) => `
         <div class="sched-item" data-order-id="${esc(order.id)}" style="cursor:pointer">
           <div>
-            <div class="when">${esc(order.window_label)}</div>
+            <div class="when">${esc(order.window_label || "Delivery day")}</div>
             <div class="who">${esc(order.customer_name)} <span class="badge ${esc(order.status)}">${esc(STATUS_LABELS[order.status] || order.status)}</span></div>
             <div class="what">${esc(order.itemsSummary || "")}</div>
           </div>
@@ -798,11 +801,9 @@ function renderAvailability() {
         </div>
         <div class="slots">
           <span class="slot-pill">${esc(day.zoneName)}</span>
-          ${day.bands.map((band) => `
-            <span class="slot-pill ${band.state === "available" ? "" : "blocked"}" title="${esc(band.reason || "")}">
-              ${esc(band.label)} · ${band.state === "available" ? "Open" : esc(band.reason || "Closed")}
-            </span>`).join("")}
-          ${day.closed ? `<span class="slot-pill blocked">No deliveries available</span>` : ""}
+          <span class="slot-pill ${day.state === "available" ? "" : "blocked"}" title="${esc(day.reason || "")}">
+            ${esc(DAY_STATE_LABELS[day.state] || day.state)}
+          </span>
         </div>
         <div>
           <button class="btn btn-outline btn-sm" type="button" data-block-date="${esc(day.date)}">Block / edit</button>
@@ -824,10 +825,7 @@ function renderBlocks() {
         <div class="block-note">${esc(block.note || "No internal note")}</div>
       </div>
       <div class="slots">
-        <span class="slot-pill blocked">
-          ${block.band ? esc(BAND_LABELS[block.band]) : block.window_id ? "Delivery window" : "Whole day"}
-          · Closed
-        </span>
+        <span class="slot-pill blocked">Whole day · Closed</span>
         ${block.calendar_event_id ? `<span class="slot-pill">Calendar event created</span>` : ""}
       </div>
       <div>
@@ -843,16 +841,13 @@ function openBlockDialog(date, block = null) {
   $("#block-date").value = date;
   $("#block-date").min = state.today;
   $("#block-note").value = block?.note || "";
-  $("#block-scope").value = block?.band || "day";
   $("#block-dialog").showModal();
 }
 
 async function submitBlock(event) {
   event.preventDefault();
-  const scope = $("#block-scope").value;
   const payload = {
     date: $("#block-date").value,
-    band: scope === "day" ? null : scope,
     note: $("#block-note").value.trim(),
     acknowledge: state.blockAck,
   };

@@ -1,33 +1,22 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import {
-  DELIVERY_BANDS,
   MIN_NOTICE_HOURS,
   TRUCK_UNITS_PER_DAY,
   addDays,
-  bandById,
-  bandEndUtc,
-  bandStartUtc,
+  deliveryDayEndUtc,
+  deliveryDayStartUtc,
   formatLongDate,
   formatShortDate,
   isWeekday,
   londonToUtc,
   todayLondon,
   weekdayIndex,
-  type DeliveryBandId,
 } from "./time";
 import { cleanupExpiredReservations, type BlockRow, type Env, type OrderRow } from "./db";
 import { calendarBusy, type BusyInterval } from "./google";
 import { zoneForDate } from "./zones";
 
 export type SlotState = "available" | "full" | "blocked" | "past" | "busy";
-
-export interface BandView {
-  id: DeliveryBandId;
-  label: string;
-  short: string;
-  state: SlotState;
-  reason?: string;
-}
 
 export interface DayView {
   date: string;
@@ -39,10 +28,11 @@ export interface DayView {
   closed: boolean;
   closedLabel: string;
   note?: string;
+  state: SlotState;
+  reason?: string;
   unitsUsed: number;
   unitsTotal: number;
   unitsLeft: number;
-  bands: BandView[];
 }
 
 export interface AvailabilityResult {
@@ -120,52 +110,35 @@ export async function loadAvailabilityContext(
   };
 }
 
-function bandBlockFor(date: string, band: DeliveryBandId, blocks: BlockRow[]): BlockRow | undefined {
-  return blocks.find((block) => {
-    if (block.date !== date) return false;
-    if (block.band) return block.band === band;
-    // Legacy blocks were created against the old two-hour windows.
-    if (band === "morning") return block.window_id === 1 || block.window_id === 2;
-    return block.window_id === 3 || block.window_id === 4;
-  });
-}
-
 export function buildDay(date: string, ctx: AvailabilityContext): DayView {
   const zone = zoneForDate(date);
   const dayBlocks = ctx.blocks.filter((block) => block.date === date);
-  const wholeDayBlock = dayBlocks.find((block) => block.window_id === null && !block.band);
-  const note = ctx.includeNotes ? wholeDayBlock?.note || undefined : undefined;
+  // A block used to mean a single old-time window or round. Any closure now
+  // closes the whole delivery day.
+  const dayBlock = dayBlocks.find((block) => block.capacity === 0);
+  const note = ctx.includeNotes ? dayBlock?.note || undefined : undefined;
   const unitsUsed = Math.round((ctx.usedUnits.get(date) ?? 0) * 100) / 100;
   const unitsLeft = Math.max(0, Math.round((TRUCK_UNITS_PER_DAY - unitsUsed) * 100) / 100);
+  const start = deliveryDayStartUtc(date).getTime();
+  const end = deliveryDayEndUtc(date).getTime();
 
-  const bands: BandView[] = DELIVERY_BANDS.map((band) => {
-    const block = bandBlockFor(date, band.id, dayBlocks);
-    const start = bandStartUtc(date, band.id).getTime();
-    const end = bandEndUtc(date, band.id).getTime();
-    let state: SlotState = "available";
-    let reason: string | undefined;
+  let state: SlotState = "available";
+  let reason: string | undefined;
+  if (dayBlock) {
+    state = "blocked";
+    reason = "No deliveries this day";
+  } else if (start < ctx.cutoff) {
+    state = "past";
+    reason = "Needs 24 hours' notice";
+  } else if (unitsLeft <= 0) {
+    state = "full";
+    reason = "Truck full";
+  } else if (ctx.busy.some((busy) => busy.start < end && busy.end > start)) {
+    state = "busy";
+    reason = "Busy in Google Calendar";
+  }
 
-    if (wholeDayBlock) {
-      state = "blocked";
-      reason = "No deliveries this day";
-    } else if (block && block.capacity === 0) {
-      state = "blocked";
-      reason = "Closed for this round";
-    } else if (start < ctx.cutoff) {
-      state = "past";
-      reason = "Needs 24 hours' notice";
-    } else if (unitsLeft <= 0) {
-      state = "full";
-      reason = "Truck full";
-    } else if (ctx.busy.some((busy) => busy.start < end && busy.end > start)) {
-      state = "busy";
-      reason = "Busy in Google Calendar";
-    }
-
-    return { id: band.id, label: band.label, short: band.short, state, reason };
-  });
-
-  const closed = Boolean(wholeDayBlock);
+  const closed = Boolean(dayBlock);
   return {
     date,
     label: formatShortDate(date),
@@ -178,10 +151,11 @@ export function buildDay(date: string, ctx: AvailabilityContext): DayView {
     closed,
     closedLabel: closed ? "No deliveries available" : "",
     note,
+    state,
+    reason,
     unitsUsed,
     unitsTotal: TRUCK_UNITS_PER_DAY,
     unitsLeft,
-    bands,
   };
 }
 
@@ -200,11 +174,7 @@ export async function computeAvailability(
     const date = addDays(from, i);
     if (!isWeekday(date)) continue;
     const day = buildDay(date, ctx);
-    if (!opts.includePast) {
-      // Hide dates where the last delivery band already fails the 24-hour notice rule.
-      const lastBandEnd = londonToUtc(date, "17:00").getTime();
-      if (lastBandEnd < ctx.cutoff) continue;
-    }
+    if (!opts.includePast && deliveryDayStartUtc(date).getTime() < ctx.cutoff) continue;
     out.push(day);
   }
 
@@ -219,15 +189,9 @@ export async function computeAvailability(
   };
 }
 
-export async function getSlotState(
-  env: Env,
-  db: D1Database,
-  date: string,
-  band: DeliveryBandId,
-): Promise<{ day: DayView; slot: BandView | null }> {
+export async function getDayState(env: Env, db: D1Database, date: string): Promise<DayView> {
   const { ctx } = await loadAvailabilityContext(env, db, date, date);
-  const day = buildDay(date, ctx);
-  return { day, slot: day.bands.find((item) => item.id === band) ?? null };
+  return buildDay(date, ctx);
 }
 
 const UNIT_SLOTS = Math.round(TRUCK_UNITS_PER_DAY * 10);
@@ -349,14 +313,6 @@ export async function orderHasCapacity(db: D1Database, orderId: string): Promise
   return Boolean(row);
 }
 
-export async function orderHasSlotLock(db: D1Database, orderId: string): Promise<boolean> {
-  const row = await db
-    .prepare("SELECT 1 AS x FROM slot_locks WHERE order_id = ? LIMIT 1")
-    .bind(orderId)
-    .first();
-  return Boolean(row);
-}
-
 export function adminCalendarMonth(month: string, orders: OrderRow[], blocks: BlockRow[]) {
   const [year, monthNum] = month.split("-").map(Number);
   const daysInMonth = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
@@ -385,7 +341,7 @@ export function adminCalendarMonth(month: string, orders: OrderRow[], blocks: Bl
       inMonth: true,
       orders: dayOrders.length,
       paid: dayOrders.filter((order) => order.payment_status === "paid").length,
-      blocked: blocks.some((block) => block.date === date && block.window_id === null && !block.band),
+      blocked: blocks.some((block) => block.date === date && block.capacity === 0),
       weekend: !isWeekday(date),
       capacityUsed: Math.round(dayOrders.reduce((sum, order) => sum + (order.space_units || 0), 0) * 100) / 100,
     });
@@ -395,5 +351,3 @@ export function adminCalendarMonth(month: string, orders: OrderRow[], blocks: Bl
   }
   return { month, cells };
 }
-
-export { bandById };

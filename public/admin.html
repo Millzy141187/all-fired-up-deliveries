@@ -151,7 +151,7 @@
           <div class="admin-page-head">
             <div>
               <h1>Availability manager</h1>
-              <p>Close whole days or a morning/afternoon round and leave an internal note.</p>
+              <p>Close whole delivery days and leave an internal note.</p>
             </div>
             <button class="btn btn-sm" type="button" id="add-block">Block a date</button>
           </div>
@@ -315,7 +315,7 @@
       <div class="dialog-head">
         <div>
           <h2>Block delivery availability</h2>
-          <small>Close a whole day or one round. Paid orders are untouched.</small>
+          <small>Close a delivery day. Paid orders are untouched.</small>
         </div>
         <button class="dialog-close" type="button" data-block-close aria-label="Close">×</button>
       </div>
@@ -325,14 +325,6 @@
           <div class="field">
             <label for="block-date">Date</label>
             <input type="date" id="block-date" required>
-          </div>
-          <div class="field">
-            <label for="block-scope">What to block</label>
-            <select id="block-scope">
-              <option value="day">Whole day</option>
-              <option value="morning">Morning (09:00 – 13:00)</option>
-              <option value="afternoon">Afternoon (13:00 – 17:00)</option>
-            </select>
           </div>
           <div class="field full">
             <label for="block-note">Internal note (optional)</label>

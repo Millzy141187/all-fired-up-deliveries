@@ -19,6 +19,23 @@ export const RESERVATION_MINUTES = 15;
 /** How many dumpy-bag equivalents one truck load can carry. */
 export const TRUCK_UNITS_PER_DAY = 5;
 
+/** The working day for a delivery round. */
+export const DELIVERY_DAY_START = "09:00";
+export const DELIVERY_DAY_END = "17:00";
+
+export function deliveryDayStartUtc(date: string): Date {
+  return londonToUtc(date, DELIVERY_DAY_START);
+}
+
+export function deliveryDayEndUtc(date: string): Date {
+  return londonToUtc(date, DELIVERY_DAY_END);
+}
+
+/** A delivery date must be at least 24 hours away from the start of the round. */
+export function meetsNoticeDay(date: string, now = new Date()): boolean {
+  return deliveryDayStartUtc(date).getTime() >= now.getTime() + MIN_NOTICE_HOURS * 3600_000;
+}
+
 /** Customer-facing delivery promise: a day plus morning or afternoon. */
 export const DELIVERY_BANDS = [
   { id: "morning", short: "Morning", label: "Morning (09:00 – 13:00)", start: "09:00", end: "13:00" },
