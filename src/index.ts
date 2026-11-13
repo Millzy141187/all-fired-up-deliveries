@@ -234,6 +234,7 @@ app.get("/api/bootstrap", async (c) => {
         dayLabel: zone.dayLabel,
         districts: zone.districts,
         roadMiles: zone.roadMiles,
+        bookable: zone.roadMiles <= BUSINESS.maxRoadMiles,
       })),
       calendarName: settings.google_calendar_name || BUSINESS.defaultCalendarName,
     },

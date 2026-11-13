@@ -1,6 +1,6 @@
 import { hashPassword, randomHex, newOrderRef, newToken } from "./crypto";
 import { addDays, isWeekday, nextWeekdays, todayLondon, windowById } from "./time";
-import { zoneForDate, zoneForPostcode, type DeliveryZone } from "./zones";
+import { MAX_DELIVERY_ROAD_MILES, zoneForDate, zoneForPostcode, type DeliveryZone } from "./zones";
 
 
 export interface Env {
@@ -22,8 +22,8 @@ export const BUSINESS = {
   phone: "0000 000 000",
   email: "orders@allfiredup.co.uk",
   address: "Foresters Lodge, Bradenham Lane, Scarning, Dereham, Norfolk NR19 2LA",
-  maxRoadMiles: 60,
-  deliveryPrefixes: ["NR", "IP", "PE", "CB"],
+  maxRoadMiles: MAX_DELIVERY_ROAD_MILES,
+  deliveryPrefixes: ["NR"],
   defaultCalendarName: "All Fired Up Deliveries",
   // Created ahead of launch in the connected Google account. The OAuth flow
   // verifies access and can create a fresh calendar if this one is not visible.

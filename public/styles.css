@@ -279,6 +279,8 @@ p { margin: 0; }
 .day-head .day-zone { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 1px; }
 .day-head .day-meta { font-size: 0.72rem; color: var(--muted); }
 .day-head .day-meta.full { color: var(--red); font-weight: 700; }
+.day-head-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.badge.next { background: var(--green-soft); color: #245032; }
 .slot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 11px; }
 .slot {
   border: 1.5px solid #d8c8b1; background: #fffefa; border-radius: 9px; padding: 9px 10px;

@@ -3,6 +3,9 @@
 
 import { weekdayIndex } from "./time";
 
+/** Hard local delivery limit, measured by road from the yard at NR19 2LA. */
+export const MAX_DELIVERY_ROAD_MILES = 20;
+
 export interface DeliveryZone {
   id: string;
   name: string;
@@ -79,6 +82,11 @@ export function zoneForPostcode(postcode: string): DeliveryZone | null {
   const district = postcodeDistrict(postcode);
   if (!district) return null;
   return DELIVERY_ZONES.find((zone) => zone.districts.includes(district)) ?? null;
+}
+
+export function bookableZoneForPostcode(postcode: string): DeliveryZone | null {
+  const zone = zoneForPostcode(postcode);
+  return zone && zone.roadMiles <= MAX_DELIVERY_ROAD_MILES ? zone : null;
 }
 
 export function zoneForDate(date: string): DeliveryZone | null {

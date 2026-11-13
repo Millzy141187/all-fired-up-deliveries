@@ -17,11 +17,11 @@ Prices are clearly marked test prices.
 - Warm, responsive ordering flow (mobile-first) with placeholder product imagery.
 - Products modelled on the real range: large dumpy bag, 2m³ and 3m³ loose loads,
   20 nets, kindling, natural firelighters and smokeless coal.
-- Postcode-based delivery rounds: Monday Dereham & Swaffham (NR17, NR19–20),
-  Tuesday Norwich (NR1–8), Wednesday Ipswich (IP1–7), Thursday King's Lynn
-  (PE30–38), Friday Cambridge (CB1–5). The date picker only shows the customer's
-  own round days. The area is described in road miles from the yard (up to about
-  60), not a straight-line radius.
+- Postcode-based local delivery rounds: Monday Dereham & Swaffham (NR17,
+  NR19–20) and Tuesday Norwich (NR1–8). The date picker only shows the
+  customer's own round days and pre-selects the next available one. Online
+  booking is limited to rounds within 20 road miles of the yard; Ipswich,
+  King's Lynn and Cambridge are outside that limit and are call-us only.
 - Five truck spaces per day, weighted by product volume, booked by date only
   with 24-hour notice. The arrival time is narrowed by text on the day.
 - 15-minute truck-space hold while the customer pays.
@@ -125,8 +125,8 @@ Blocks create a corresponding **“Blocked — no deliveries”** calendar event
 | Rule | Value |
 | --- | --- |
 | Delivery days | Monday–Friday, one area round per weekday |
-| Rounds | Dereham & Swaffham Mon · Norwich Tue · Ipswich Wed · King's Lynn Thu · Cambridge Fri |
-| Delivery area | Up to about 60 road miles from the yard (Dereham 5 · Norwich 20 · King's Lynn 25 · Ipswich 56 · Cambridge 57) |
+| Rounds | Dereham & Swaffham Mon · Norwich Tue (online) · Ipswich, King's Lynn and Cambridge are call-us only |
+| Delivery area | Within 20 road miles of the yard (Dereham 4 · Norwich 20) |
 | Booking | Delivery date only; arrival time texted on the day |
 | Truck capacity | 5 dumpy-bag equivalents per day |
 | Product space | Dumpy bag 1 · 20 nets 1 · 2m³ loose 3 · 3m³ loose 4.5 · kindling 0.1 · firelighters 0.05 · coal 0.25 |

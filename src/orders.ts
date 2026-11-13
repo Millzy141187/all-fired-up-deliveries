@@ -18,7 +18,12 @@ import {
   orderHasCapacity,
   releaseOrderLocks,
 } from "./availability";
-import { zoneForDate, zoneForPostcode } from "./zones";
+import {
+  MAX_DELIVERY_ROAD_MILES,
+  bookableZoneForPostcode,
+  zoneForDate,
+  zoneForPostcode,
+} from "./zones";
 import {
   clearBusyCache,
   createDeliveryEvent,
@@ -153,10 +158,13 @@ export async function buildReservation(
   if (!/^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i.test(postcodeRaw.replace(/\s+/g, " ").trim())) {
     throw new ValidationError("Please enter a valid UK postcode.");
   }
-  const zone = zoneForPostcode(postcodeRaw);
+  const zone = bookableZoneForPostcode(postcodeRaw);
   if (!zone) {
+    const knownZone = zoneForPostcode(postcodeRaw);
     throw new ValidationError(
-      "Sorry, we do not have a regular delivery round for that postcode yet. Please call us and we will see what we can arrange.",
+      knownZone
+        ? `Sorry, that postcode is outside our ${MAX_DELIVERY_ROAD_MILES} road mile delivery area. Please call us and we will see what we can arrange.`
+        : "Sorry, we do not have a regular delivery round for that postcode yet. Please call us and we will see what we can arrange.",
       422,
       "OUT_OF_AREA",
     );

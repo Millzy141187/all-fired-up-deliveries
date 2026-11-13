@@ -158,7 +158,7 @@ function cartIssue() {
   return `${issues.map((i) => i.product.name).join(" and ")} can only be delivered with a firewood order.`;
 }
 
-function zoneForPostcode(postcode) {
+function rawZoneForPostcode(postcode) {
   if (!boot?.business?.zones) return null;
   const compact = String(postcode || "").toUpperCase().replace(/\s+/g, "");
   if (compact.length < 5) return null;
@@ -166,6 +166,16 @@ function zoneForPostcode(postcode) {
   const district = (outward.match(/^([A-Z]{1,2}\d{1,2})$/) || [])[1];
   if (!district) return null;
   return boot.business.zones.find((zone) => zone.districts.includes(district)) || null;
+}
+
+function maxRoadMiles() {
+  return Number(boot?.business?.maxRoadMiles || 20);
+}
+
+function zoneForPostcode(postcode) {
+  const zone = rawZoneForPostcode(postcode);
+  if (!zone || zone.bookable === false) return null;
+  return Number(zone.roadMiles || 0) <= maxRoadMiles() ? zone : null;
 }
 
 function postcodeInArea(postcode) {
@@ -415,7 +425,7 @@ function renderDeliveryStep(container) {
   container.innerHTML = `
     <div class="panel">
       <h2>Where shall we deliver?</h2>
-      <p class="panel-intro">We deliver on set weekday rounds around Dereham, Norwich, Ipswich, King's Lynn and Cambridge. Enter your postcode and we will show your round day.</p>
+      <p class="panel-intro">We deliver on local weekday rounds within ${maxRoadMiles()} road miles of our yard in Scarning. Enter your postcode and we'll show your next round day.</p>
       <form id="delivery-form" novalidate>
         <div class="form-grid">
           <div class="field full" data-field="name">
@@ -532,15 +542,21 @@ function showAreaMessage(postcode, markError) {
     if (markError) setFieldError("postcode", "Enter a valid UK postcode.");
     return;
   }
-  const zone = zoneForPostcode(value);
+  const zone = rawZoneForPostcode(value);
   if (!zone) {
     el.className = "area-message bad";
     el.textContent = `We do not have a regular delivery round for ${value.toUpperCase()} yet. Please call us and we will see what we can arrange.`;
     if (markError) setFieldError("postcode", "This postcode is not on one of our delivery rounds.");
     return;
   }
+  if (zone.bookable === false || Number(zone.roadMiles || 0) > maxRoadMiles()) {
+    el.className = "area-message bad";
+    el.textContent = `Sorry, ${value.toUpperCase()} is outside our ${maxRoadMiles()} road mile delivery area. Please call us and we will see what we can arrange.`;
+    if (markError) setFieldError("postcode", `This postcode is outside our ${maxRoadMiles()} road mile delivery area.`);
+    return;
+  }
   el.className = "area-message ok";
-  el.textContent = `Good news — ${zone.name} is on our ${zone.dayLabel} round, about ${zone.roadMiles} road miles from the yard. You will choose one of these dates at checkout.`;
+  el.textContent = `Good news — ${zone.name} is on our ${zone.dayLabel} round, about ${zone.roadMiles} road miles from the yard. We'll show the next available date at checkout.`;
   setFieldError("postcode", "");
 }
 
@@ -554,7 +570,12 @@ function validateCustomer() {
   if (!c.address1 || c.address1.trim().length < 3) errors.address1 = "Please enter the first line of the address.";
   if (!c.city || c.city.trim().length < 2) errors.city = "Please enter the town or city.";
   if (!validPostcode(c.postcode)) errors.postcode = "Please enter a valid UK postcode.";
-  else if (!postcodeInArea(c.postcode)) errors.postcode = "This postcode is not on one of our delivery rounds.";
+  else if (!postcodeInArea(c.postcode)) {
+    const raw = rawZoneForPostcode(c.postcode);
+    errors.postcode = raw
+      ? `This postcode is outside our ${maxRoadMiles()} road mile delivery area.`
+      : "This postcode is not on one of our delivery rounds.";
+  }
 
   ["name", "email", "phone", "address1", "city", "postcode"].forEach((key) => {
     setFieldError(key, errors[key] || "");
@@ -567,7 +588,8 @@ function validateCustomer() {
 
 async function renderSlotStep(container) {
   const zone = zoneForPostcode(state.customer.postcode);
-  const zoneText = zone ? `${zone.name} on ${zone.dayLabel}s` : "your area on its round day";
+  if (!zone) { navigate("delivery"); return; }
+  const zoneText = `${zone.name} on ${zone.dayLabel}s`;
   const loadLimit = boot?.delivery?.truckUnits || 5;
   container.innerHTML = `
     <div class="panel">
@@ -607,21 +629,41 @@ async function renderSlotStep(container) {
       ? `<div class="calendar-banner off"><span class="dot"></span> The live calendar could not be checked just now. Availability is shown from our internal schedule — please call if you are unsure.</div>`
       : `<div class="calendar-banner off"><span class="dot"></span> Google Calendar is not connected yet. Availability is shown from the internal delivery schedule for this test.</div>`;
 
-  const days = (availability.days || []).filter((day) => !zone || day.zoneId === zone.id);
-  const selected = state.slot;
+  const days = (availability.days || []).filter((day) => day.zoneId === zone.id);
+  const needed = cartUnits();
+  const recommended = days.find((day) => day.state === "available" && day.unitsLeft >= needed);
+  let selected = state.slot;
+  if (selected) {
+    const stillAvailable = days.some(
+      (day) => day.date === selected.date && day.state === "available" && day.unitsLeft >= needed,
+    );
+    if (!stillAvailable) selected = null;
+  }
+  if (!selected && recommended) {
+    selected = { date: recommended.date };
+    state.slot = selected;
+    saveDraft();
+  }
+  const pickedNext = Boolean(selected && recommended && selected.date === recommended.date);
+  const nextLine = recommended
+    ? pickedNext
+      ? `<p class="hint" style="margin-top:-4px">We've selected the next available date for your round. Choose a later date below if you need one.</p>`
+      : `<p class="hint" style="margin-top:-4px">The next available date is ${esc(recommended.longLabel)}.</p>`
+    : "";
 
   container.innerHTML = `
     <div class="panel">
       <h2>Choose your delivery day</h2>
       <p class="panel-intro">We need at least 24 hours' notice. Your truck space is held for 15 minutes while you pay, and we text a narrower arrival time before the day.</p>
       ${banner}
+      ${nextLine}
       <div class="legend">
         <span><i class="av"></i> Available</span>
         <span><i class="fu"></i> Fully booked</span>
         <span><i class="bl"></i> No deliveries</span>
       </div>
       <div class="day-list" id="day-list">
-        ${days.length ? days.map((day) => renderDay(day, selected)).join("") : `<p class="summary-empty">No delivery dates are available in the next five weeks. Please call the yard.</p>`}
+        ${days.length ? days.map((day) => renderDay(day, selected, recommended?.date)).join("") : `<p class="summary-empty">No delivery dates are available in the next five weeks. Please call the yard.</p>`}
       </div>
       <div class="panel-actions">
         <button class="btn btn-outline" type="button" id="slot-back">← Back to details</button>
@@ -691,8 +733,9 @@ async function renderSlotStep(container) {
   });
 }
 
-function renderDay(day, selected) {
+function renderDay(day, selected, recommendedDate) {
   const isSelected = Boolean(selected && selected.date === day.date);
+  const isRecommended = day.date === recommendedDate;
   if (day.closed) {
     return `
       <div class="day-card closed">
@@ -715,7 +758,10 @@ function renderDay(day, selected) {
     <div class="day-card">
       <div class="day-head">
         <div><strong>${esc(day.label)}</strong><span class="day-zone">${esc(day.zoneName)} round</span></div>
-        <span class="day-meta">${formatUnits(day.unitsLeft)} of ${day.unitsTotal} truck spaces left</span>
+        <div class="day-head-right">
+          ${isRecommended ? `<span class="badge next">Next available</span>` : ""}
+          <span class="day-meta">${formatUnits(day.unitsLeft)} of ${day.unitsTotal} truck spaces left</span>
+        </div>
       </div>
       <div class="slot-grid">
         <button type="button" class="slot ${day.state} ${isSelected ? "selected" : ""}"
